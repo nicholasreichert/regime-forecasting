@@ -1,0 +1,38 @@
+project:
+  name: "regime-forecasting"
+  seed: 42
+
+data:
+  ticker: "SPY"
+  start: "2005-01-01"
+  end: null
+  price_field: "Adj Close"
+
+targets:
+  horizons: [1, 5, 20]
+  target_types: "ret" # ret | absret |sqret
+
+features:
+  return_lags: 20
+  rolling_windows: [5, 10, 20]
+  include_volume: true
+  rsi_period: 14
+
+evaluation:
+  method: "walk_forward"
+  train_years: 6
+  test_years: 1
+  step_years: 1
+
+hmm:
+  K_values: [2, 3, 4]
+  covariance_type: "full"
+  n_iter: 200
+  tol: 0.0001
+
+paths:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  reports_dir: "reports"
+  figures_dir: "reports/figures"
+  

@@ -1,2 +1,14 @@
-uv.lock
+# python
+__pycache__/
+*.pyc
 .venv/
+.ipynb_checkpoints/
+
+# data
+data/raw/
+data/processed/
+
+reports/figures/
+
+.DS_Store
+Thumbs.db
