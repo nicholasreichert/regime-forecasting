@@ -10,7 +10,7 @@ data:
 
 targets:
   horizons: [1, 5, 20]
-  target_types: "ret" # ret | absret |sqret
+  target_type: "ret" 
 
 features:
   return_lags: 20
