@@ -59,7 +59,7 @@ class Config:
     data: DataConfig
     targets: TargetsConfig
     features: FeaturesConfig
-    evaluatoin: EvalConfig
+    evaluation: EvalConfig
     hmm: HMMConfig
     paths: PathsConfig
 
@@ -87,8 +87,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
         data=DataConfig(**raw["data"]),
         targets=TargetsConfig(**raw["targets"]),
         features=FeaturesConfig(**raw["features"]),
-        evaluatoin=EvalConfig(**raw["evaluation"]),
+        evaluation=EvalConfig(**raw["evaluation"]),
         hmm=HMMConfig(**raw["hmm"]),
         paths=PathsConfig(**raw["paths"]),
-
     )
