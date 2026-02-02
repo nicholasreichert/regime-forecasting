@@ -10,6 +10,9 @@ data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 
+artifacts/results/*.csv
+artifacts/results/latest_config.yaml
+
 reports/figures/
 
 .DS_Store
