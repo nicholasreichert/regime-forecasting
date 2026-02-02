@@ -4,7 +4,7 @@ from typing import Dict, List
 
 import pandas as pd
 
-from src.eval.metrics import mae, rmse, directional_accuracy
+from src.eval.metrics import mae, rmse, directional_accuracy, spearman_corr, top_decile_hit_rate
 from src.eval.walk_forward import walk_forward_splits
 from src.models.baselines import BaselineModel
 
@@ -18,7 +18,12 @@ def evaluate_model(
         test_years: int,
         step_years: int,
 ) -> Dict[str, float]:
-    metrics = {"rmse": [], "mae": [], "directional_accuracy": []}
+    is_vol_target = ("_absret_" in target) or ("_sqret_" in target)
+
+    if is_vol_target:
+        metrics = {"rmse": [], "mae": [], "spearman": [], "top_decile_hit": []}
+    else:
+        metrics = {"rmse": [], "mae": [], "directional_accuracy": []}
 
     for split in walk_forward_splits(
         df.index, train_years, test_years, step_years
@@ -34,11 +39,15 @@ def evaluate_model(
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
-        metrics["rmse"].append(rmse(y_test, y_pred))
-        metrics["mae"].append(mae(y_test, y_pred))
-        metrics["directional_accuracy"].append(
-            directional_accuracy(y_test, y_pred)
-        )
+        if is_vol_target:
+            metrics["rmse"].append(rmse(y_test, y_pred))
+            metrics["mae"].append(mae(y_test, y_pred))
+            metrics["spearman"].append(spearman_corr(y_test, y_pred))
+            metrics["top_decile_hit"].append(top_decile_hit_rate(y_test, y_pred))
+        else:
+            metrics["rmse"].append(rmse(y_test, y_pred))
+            metrics["mae"].append(mae(y_test, y_pred))
+            metrics["directional_accuracy"].append(directional_accuracy(y_test, y_pred))
 
     return {k: float(sum(v) / len(v)) for k, v in metrics.items()}
  

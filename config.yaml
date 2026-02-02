@@ -10,7 +10,7 @@ data:
 
 targets:
   horizons: [1, 5, 20]
-  target_type: "ret" 
+  target_type: "absret" 
 
 features:
   return_lags: 20
