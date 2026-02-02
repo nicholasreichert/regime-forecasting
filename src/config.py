@@ -45,6 +45,7 @@ class HMMConfig:
     covariance_type: Literal["full", "diag"]
     n_iter: int
     tol: float
+    min_covar: float
 
 @dataclass(frozen=True)
 class PathsConfig:

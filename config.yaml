@@ -26,9 +26,10 @@ evaluation:
 
 hmm:
   K_values: [2, 3, 4]
-  covariance_type: "full"
-  n_iter: 200
+  covariance_type: "diag"
+  n_iter: 400
   tol: 0.0001
+  min_covar: 1e-3
 
 paths:
   raw_dir: "data/raw"
