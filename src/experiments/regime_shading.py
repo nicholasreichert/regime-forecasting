@@ -29,7 +29,7 @@ class RegimeShadingConfig:
 
     # shading behavior
     use_soft_alpha: bool = True          # alpha scaled by max prob
-    alpha_min: float = 0.03
+    alpha_min: float = 0.05
     alpha_max: float = 0.22
 
     # colors (repeat if K > len(colors))
@@ -58,29 +58,30 @@ def _prob_cols(df: pd.DataFrame) -> list[str]:
 
 def _shade_segments(ax, x: pd.DatetimeIndex, probs: np.ndarray, cfg: RegimeShadingConfig) -> None:
     # shade contiguous segments w/ hard argmax state
-    # if we use soft_alpha, segment alpha is based on max prob at segment start
+    # alpha encodes confidence via max_prob aggregated over each segment
     states = probs.argmax(axis=1)
     maxp = probs.max(axis=1)
-
-    if cfg.use_soft_alpha:
-        alphas = np.clip(maxp, cfg.alpha_min, cfg.alpha_max)
-    else:
-        alphas = np.full(len(x), cfg.alpha_max)
 
     start = 0
     for i in range(1, len(x) + 1):
         if i == len(x) or states[i] != states[start]:
             k = int(states[start])
             color = cfg.colors[k % len(cfg.colors)]
+
+            if cfg.use_soft_alpha:
+                seg_conf = float(np.median(maxp[start:i]))  # segment confidence
+                alpha = float(np.clip(seg_conf, cfg.alpha_min, cfg.alpha_max))
+            else:
+                alpha = float(cfg.alpha_max)
+
             ax.axvspan(
                 x[start],
                 x[i - 1],
                 color=color,
-                alpha=float(alphas[start]),
+                alpha=alpha,
                 linewidth=0,
             )
             start = i
-
 
 def _compute_level_series(data: pd.DataFrame, cfg: RegimeShadingConfig) -> pd.Series:
     # If price exists, prefer it
