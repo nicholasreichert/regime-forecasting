@@ -38,7 +38,7 @@ def evaluate_hmm_regime_ridge(
     test_years: int,
     step_years: int,
     regime_cfg: RegimeEvalConfig,
-) -> Tuple[Dict[str, float], Optional[Dict[str, np.ndarray]]]:
+) -> Tuple[Dict[str, float], Optional[Dict[str, np.ndarray]], pd.DataFrame]:
     """
     walk-forward eval for regime-conditioned Ridge using HMM regime probs.
 
@@ -68,6 +68,8 @@ def evaluate_hmm_regime_ridge(
             "directional_accuracy": [],
         }
     last_hmm_res = None
+    oos_rows: List[dict] = []
+
     for split in walk_forward_splits(df.index, train_years, test_years, step_years):
         train = df.loc[split.train_idx]
         test = df.loc[split.test_idx]
@@ -99,6 +101,17 @@ def evaluate_hmm_regime_ridge(
         Xte = X_test.iloc[-n_test:]
         yte = y_test.iloc[-n_test:]
         test_aligned = test.iloc[-n_test:]  # aligns with yte/y_pred for hv_now
+
+        # collect strictly OOS regime probs aligned to Xte/yte
+        probs_oos = hmm_res.test_probs[-n_test:]
+        dates_oos = test_aligned.index
+        for d, p in zip(dates_oos, probs_oos):
+            row = {"date": d}
+            for k in range(p.shape[0]):
+                row[f"p_state_{k}"] = float(p[k])
+            row["hard_state"] = int(np.argmax(p))
+            row["max_prob"] = float(np.max(p))
+            oos_rows.append(row)
 
         model.fit(Xtr, ytr, hmm_res.train_probs[-n_train:])
         y_pred = model.predict(Xte, hmm_res.test_probs[-n_test:])
@@ -134,8 +147,15 @@ def evaluate_hmm_regime_ridge(
     if last_hmm_res is not None:
         hmm_info = hmm_interpretability(last_hmm_res.model, last_hmm_res.scaler)
     
+    # build OOS regime probability df
+    oos_df = pd.DataFrame(oos_rows)
+    if len(oos_df) > 0:
+        oos_df = oos_df.sort_values("date").drop_duplicates(subset=["date"], keep="last")
+        oos_df["date"] = pd.to_datetime(oos_df["date"])
+        oos_df = oos_df.set_index("date")
+
     # safe aggregation
     out: Dict[str, float] = {}
     for k, v in metrics.items():
         out[k] = float(np.mean(v)) if len(v) else float("nan")
-    return out, hmm_info
+    return out, hmm_info, oos_df

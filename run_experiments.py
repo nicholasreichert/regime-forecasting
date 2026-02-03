@@ -96,7 +96,7 @@ def main() -> None:
             for mode in ["hard", "soft"]:
                 rc = RegimeConditionedRidge(alpha=1.0, mode=mode, min_points_per_regime=200)
 
-                metrics, hmm_info = evaluate_hmm_regime_ridge(
+                metrics, hmm_info, oos_df = evaluate_hmm_regime_ridge(
                     df=data,
                     features=features,
                     target=target,
@@ -108,15 +108,17 @@ def main() -> None:
                 )
 
                 name = f"hmm_ridge_{mode}_K{K}"
+
+                regime_dir = (
+                    Path("artifacts")
+                    / "regimes"
+                    / run_id
+                    / target
+                    / name
+                )
+                regime_dir.mkdir(parents=True, exist_ok=True)
+
                 if hmm_info is not None:
-                    regime_dir = (
-                        Path("artifacts")
-                        / "regimes"
-                        / run_id
-                        / target
-                        / name
-                    )
-                    regime_dir.mkdir(parents=True, exist_ok=True)
                     np.savez(
                         regime_dir / "hmm_interpretability.npz",
                         transmat=hmm_info["transmat"],
@@ -124,9 +126,17 @@ def main() -> None:
                         stationary=hmm_info["stationary"],
                         means_z=hmm_info["means_z"],
                         means_raw=hmm_info["means_raw"],
-                        covars=hmm_info["covars"],                                          
-                        )
+                        covars=hmm_info["covars"],
+                    )
+
+                if oos_df is not None and len(oos_df) > 0:
+                    oos_df.reset_index().to_csv(
+                        regime_dir / "oos_regime_probs.csv",
+                        index=False,
+                    )
+
                 print(name, _pretty(metrics))
+
 
                 rows.append(
                     {
