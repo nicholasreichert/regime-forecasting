@@ -16,6 +16,7 @@ from src.models.regime_conditioned import RegimeConditionedRidge
 from src.experiments.logging import utc_run_id, pack_params, save_results_csv
 from src.experiments.selections import select_best_models, save_best_models
 from src.experiments.regime_shading import RegimeShadingConfig, make_regime_shading_plot
+from src.experiments.regime_conditional_metrics import compute_regime_conditional_metrics
 
 def _pretty(metrics: dict) -> dict:
     keys = [
@@ -96,7 +97,7 @@ def main() -> None:
             for mode in ["hard", "soft"]:
                 rc = RegimeConditionedRidge(alpha=1.0, mode=mode, min_points_per_regime=200)
 
-                metrics, hmm_info, oos_df = evaluate_hmm_regime_ridge(
+                metrics, hmm_info, oos_df, y_true_oos, y_pred_oos = evaluate_hmm_regime_ridge(
                     df=data,
                     features=features,
                     target=target,
@@ -151,6 +152,20 @@ def main() -> None:
 
                 print(name, _pretty(metrics))
 
+                # Regime-conditional metrics table
+                is_vol_target = ("_absret_" in target) or ("_sqret_" in target)
+
+                regime_metrics = compute_regime_conditional_metrics(
+                    y_true=y_true_oos,
+                    y_pred=y_pred_oos,
+                    oos_regimes=oos_df,
+                    is_vol_target=is_vol_target,
+                )
+
+                regime_metrics.to_csv(
+                    regime_dir / "per_regime_metrics.csv",
+                    index=False,
+                )
 
                 rows.append(
                     {

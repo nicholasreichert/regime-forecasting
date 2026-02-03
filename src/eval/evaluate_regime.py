@@ -67,6 +67,8 @@ def evaluate_hmm_regime_ridge(
             "mae": [],
             "directional_accuracy": [],
         }
+    y_true_oos = []
+    y_pred_oos = []
     last_hmm_res = None
     oos_rows: List[dict] = []
 
@@ -116,6 +118,9 @@ def evaluate_hmm_regime_ridge(
         model.fit(Xtr, ytr, hmm_res.train_probs[-n_train:])
         y_pred = model.predict(Xte, hmm_res.test_probs[-n_test:])
 
+        y_true_oos.append(pd.Series(yte, index=test_aligned.index))
+        y_pred_oos.append(pd.Series(y_pred, index=test_aligned.index))
+
         # Full-sample metrics
         metrics["rmse"].append(rmse(yte, y_pred))
         metrics["mae"].append(mae(yte, y_pred))
@@ -154,8 +159,11 @@ def evaluate_hmm_regime_ridge(
         oos_df["date"] = pd.to_datetime(oos_df["date"])
         oos_df = oos_df.set_index("date")
 
+    y_true_oos = pd.concat(y_true_oos).sort_index()
+    y_pred_oos = pd.concat(y_pred_oos).sort_index()
+
     # safe aggregation
     out: Dict[str, float] = {}
     for k, v in metrics.items():
         out[k] = float(np.mean(v)) if len(v) else float("nan")
-    return out, hmm_info, oos_df
+    return out, hmm_info, oos_df, y_true_oos, y_pred_oos
