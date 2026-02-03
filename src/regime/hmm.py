@@ -19,10 +19,7 @@ class HMMResult:
 
 
 def _build_hmm_observations(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Low-dimensional emission vector for the HMM.
-    Use stable, meaningful inputs for regime inference (not the full feature set).
-    """
+    # low dimensional emission observational vector
     obs = pd.DataFrame(index=df.index)
     obs["ret"] = df["ret_1d"].astype(float)
     obs["abs_ret"] = df["ret_1d"].abs().astype(float)
@@ -32,13 +29,7 @@ def _build_hmm_observations(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _log_gaussian_diag_density(X: np.ndarray, means: np.ndarray, covars: np.ndarray) -> np.ndarray:
-    """
-    Compute log N(x | mean_k, diag(covar_k)) for all t,k.
-
-    Supports covars being either:
-      - (K, D)    diag variances
-      - (K, D, D) full matrices (we take diag)
-    """
+    # compute log N(x | mean_k, diag(covar_k)) for all t, k
     T, D = X.shape
     K = means.shape[0]
 
@@ -177,3 +168,30 @@ def fit_hmm_and_infer_probs(
     )
 
     return HMMResult(model=hmm, scaler=scaler, train_probs=train_probs, test_probs=test_probs)
+
+def hmm_interpretability(hmm, scaler=None):
+    transmat = hmm.transmat_
+    startprob = hmm.startprob_
+
+    # stationary distribution
+    eigvals, eigvecs = np.linalg.eig(transmat.T)
+    stat = np.real(eigvecs[:, np.isclose(eigvals, 1)])
+    stat = stat[:, 0]
+    stat = stat / stat.sum()
+
+    means = hmm.means_
+    covars = hmm.covars_
+
+    if scaler is not None:
+        means_raw = scaler.inverse_transform(means)
+    else:
+        means_raw = means
+
+    return {
+        "transmat": transmat,
+        "startprob": startprob,
+        "stationary": stat,
+        "means_z": means,
+        "means_raw": means_raw,
+        "covars": covars,
+    }

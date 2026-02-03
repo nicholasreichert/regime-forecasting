@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from src.config import load_config
 from src.data.pipeline import build_and_save_processed_dataset
@@ -95,7 +96,7 @@ def main() -> None:
             for mode in ["hard", "soft"]:
                 rc = RegimeConditionedRidge(alpha=1.0, mode=mode, min_points_per_regime=200)
 
-                metrics = evaluate_hmm_regime_ridge(
+                metrics, hmm_info = evaluate_hmm_regime_ridge(
                     df=data,
                     features=features,
                     target=target,
@@ -107,6 +108,24 @@ def main() -> None:
                 )
 
                 name = f"hmm_ridge_{mode}_K{K}"
+                if hmm_info is not None:
+                    regime_dir = (
+                        Path("artifacts")
+                        / "regimes"
+                        / run_id
+                        / target
+                        / name
+                    )
+                    regime_dir.mkdir(parents=True, exist_ok=True)
+                    np.savez(
+                        regime_dir / "hmm_interpretability.npz",
+                        transmat=hmm_info["transmat"],
+                        startprob=hmm_info["startprob"],
+                        stationary=hmm_info["stationary"],
+                        means_z=hmm_info["means_z"],
+                        means_raw=hmm_info["means_raw"],
+                        covars=hmm_info["covars"],                                          
+                        )
                 print(name, _pretty(metrics))
 
                 rows.append(

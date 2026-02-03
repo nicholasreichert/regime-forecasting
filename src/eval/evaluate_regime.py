@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ from src.eval.metrics import (
 from src.eval.subsets import high_vol_mask, top_quantile_mask, apply_mask
 from src.eval.walk_forward import walk_forward_splits
 from src.models.regime_conditioned import RegimeConditionedRidge
-from src.regime.hmm import fit_hmm_and_infer_probs
+from src.regime.hmm import fit_hmm_and_infer_probs, hmm_interpretability
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ def evaluate_hmm_regime_ridge(
     test_years: int,
     step_years: int,
     regime_cfg: RegimeEvalConfig,
-) -> Dict[str, float]:
+) -> Tuple[Dict[str, float], Optional[Dict[str, np.ndarray]]]:
     """
     walk-forward eval for regime-conditioned Ridge using HMM regime probs.
 
@@ -67,7 +67,7 @@ def evaluate_hmm_regime_ridge(
             "mae": [],
             "directional_accuracy": [],
         }
-
+    last_hmm_res = None
     for split in walk_forward_splits(df.index, train_years, test_years, step_years):
         train = df.loc[split.train_idx]
         test = df.loc[split.test_idx]
@@ -87,6 +87,8 @@ def evaluate_hmm_regime_ridge(
             min_covar=regime_cfg.hmm_min_covar,
             seed=regime_cfg.seed,
         )
+
+        last_hmm_res = hmm_res
 
         # Align probs to X/y lengths (HMM obs builder may drop NaNs)
         n_train = min(len(X_train), hmm_res.train_probs.shape[0])
@@ -127,9 +129,13 @@ def evaluate_hmm_regime_ridge(
                 metrics["mae_hv_fut"].append(mae(yt_fut, yp_fut))
         else:
             metrics["directional_accuracy"].append(directional_accuracy(yte, y_pred))
-
+    
+    hmm_info: Optional[Dict[str, np.ndarray]] = None
+    if last_hmm_res is not None:
+        hmm_info = hmm_interpretability(last_hmm_res.model, last_hmm_res.scaler)
+    
     # safe aggregation
     out: Dict[str, float] = {}
     for k, v in metrics.items():
         out[k] = float(np.mean(v)) if len(v) else float("nan")
-    return out
+    return out, hmm_info

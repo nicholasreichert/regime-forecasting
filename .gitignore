@@ -12,6 +12,7 @@ data/processed/*
 
 artifacts/results/*.csv
 artifacts/results/latest_config.yaml
+artifacts/regimes
 
 reports/figures/
 
