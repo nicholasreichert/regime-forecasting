@@ -170,3 +170,8 @@ Planned extensions:
 ---
 ## Why This Matters
 Financial time series are non-stationary. This project demonstrates that explicit regime awareness, implemented carefully and evaluated rigorously, can improve forecasting performance, especailly during periods where naive models fail most.
+
+## License
+This project is licensed under the MIT License. See the 'LICENSE' file for details.
+
+This project is for research and educational purposes only and does not constitute financial advice.
