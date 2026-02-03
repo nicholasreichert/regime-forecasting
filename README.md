@@ -105,6 +105,43 @@ artifacts/
 These plots validate that inferred regimes align with known market stress periods.
 
 ---
+## Main Results
+
+This section highlights representative results from the regime-aware forecasting pipeline,
+focusing on interpretability and performance under market stress.
+
+### Regime Structure and Market Stress
+
+The figure below shows out-of-sample inferred market regimes for the best-performing
+HMM-conditioned Ridge model at a 5-day horizon. Regime boundaries are defined by hard
+state assignments, while shading opacity reflects posterior confidence. The top
+panel shows cumulative log returns, and the bottom panel shows realized volatility.
+
+Inferred regimes align closely with known periods of elevated market stress (e.g. 2011,
+2015–16, 2018, 2020, and 2022), providing evidence that the online HMM captures meaningful
+non-stationary structure without lookahead.
+
+![Regime shading plot](artifacts/regimes/results_2026-02-03T18-32-06Z/y_absret_h5/hmm_ridge_soft_K2/plots/regime_shading.png)
+
+---
+
+### Regime-Conditional Performance
+
+Performance broken down by inferred regime at prediction time for the same model shown
+above. High-volatility regimes account for a disproportionate share of future volatility
+spikes (`hv_fut`), and regime-conditioned models exhibit improved performance during
+these periods relative to unconditioned baselines.
+
+| Regime    | Count | RMSE  | MAE   | Spearman | RMSE (hv_fut) | hv_fut frac |
+|-----------|-------|-------|-------|----------|---------------|-------------|
+| Low Vol   | 2161  | 0.0065| 0.0048| 0.227     | 0.016         | 0.045        |
+| High Vol  | 1360   | 0.0094| 0.0057| 0.28     | 0.024         | 0.45        |
+
+Full regime-conditional metrics, including additional horizons and model variants,
+are saved as CSV artifacts under the `artifacts/regimes/` directory for each run.
+
+
+---
 ## Reproducibility
 **Environment**:
 * Python 3.12
