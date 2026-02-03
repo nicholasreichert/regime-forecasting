@@ -15,7 +15,7 @@ from src.models.regime_conditioned import RegimeConditionedRidge
 
 from src.experiments.logging import utc_run_id, pack_params, save_results_csv
 from src.experiments.selections import select_best_models, save_best_models
-
+from src.experiments.regime_shading import RegimeShadingConfig, make_regime_shading_plot
 
 def _pretty(metrics: dict) -> dict:
     keys = [
@@ -134,6 +134,20 @@ def main() -> None:
                         regime_dir / "oos_regime_probs.csv",
                         index=False,
                     )
+                    plot_cfg = RegimeShadingConfig(
+                        oos_probs_csv=regime_dir / "oos_regime_probs.csv",
+                        out_path=regime_dir / "plots" / "regime_shading.png",
+                        price_col="close",    
+                        ret_col="ret_1d",  
+                        vol_col="ret_vol_20",    
+                        use_soft_alpha=True,
+                    )
+                   
+                    make_regime_shading_plot(
+                        data=data,
+                        cfg=plot_cfg,
+                        title=f"{target} | {name} | OOS regimes",
+                    )                    
 
                 print(name, _pretty(metrics))
 

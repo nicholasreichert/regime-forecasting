@@ -2,93 +2,156 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, Sequence
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 
 @dataclass(frozen=True)
-class RegimeShadingconfig:
-    artifact_dir: Path
-    out_dir: Path
-    date_col: str = "date"
-    price_col: str = "close"
-    rv_window: int = 20
-    use_soft: bool = True
-    max_alpha: float = 0.25
-    min_alpha: float = 0.0
-    state_colors: tuple[str, ...] = ("#4C78A8", "#F58518", "#54A24B", "#E45756")
+class RegimeShadingConfig:
+    # input artifacts
+    oos_probs_csv: Path
+    # output
+    out_path: Path
+    
+    # explicit ret_col to fix error
+    ret_col: Optional[str] = "ret_1d"
 
-def _load_oos_regime_probs(artifact_dir: Path) -> pd.DataFrame:
-    fp = artifact_dir / "oos_regime_probs.csv"
-    if not fp.exists():
-        raise FileNotFoundError(fp)
-    df = pd.read_csv(fp, parse_dates=["date"]).set_index("date")
+    # which column to use for price/level plot
+    # if None, we fall back to cum log returns from 'ret' if available
+    price_col: Optional[str] = "close"
+
+    # optional vol series to plot (preferred: your engineered realized vol feature)
+    vol_col: Optional[str] = "ret_vol_20"
+    vol_fallback_window: int = 20  # if vol_col missing, compute rolling std(ret)
+
+    # shading behavior
+    use_soft_alpha: bool = True          # alpha scaled by max prob
+    alpha_min: float = 0.03
+    alpha_max: float = 0.22
+
+    # colors (repeat if K > len(colors))
+    colors: Sequence[str] = ("#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2", "#B279A2")
+
+
+def _load_oos_probs(fp: Path) -> pd.DataFrame:
+    df = pd.read_csv(fp)
+    # expect either date column or already-indexed
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.sort_values("date").set_index("date")
+    else:
+        # try first column as date
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0])
+        df = df.set_index(df.columns[0]).sort_index()
     return df
 
-def _load_price_series(data_fp: Path, cfg: RegimeShadingconfig) -> pd.Series:
-    df = pd.read_csv(data_fp, parse_dates = [cfg.date_col])
-    df = df.sort_values(cfg.date_col).set_index(cfg.date_col)
-    return df[cfg.price_col].astype(float)
 
-def _realized_vol(returns: pd.Series, window: int) -> pd.Series:
-    return returns.rolling(window).std()
+def _prob_cols(df: pd.DataFrame) -> list[str]:
+    cols = [c for c in df.columns if c.startswith("p_state_")]
+    if not cols:
+        raise ValueError("No p_state_* columns found in OOS probs CSV.")
+    return cols
 
-def _shade(ax, x, probs, cfg: RegimeShadingconfig):
-    state = probs.argmax(axis=1)
 
-    if cfg.use_soft:
-        alpha = probs.max(axis=1)
-        alpha = np.clip(alpha, cfg.min_alpha, cfg.max_alpha)
+def _shade_segments(ax, x: pd.DatetimeIndex, probs: np.ndarray, cfg: RegimeShadingConfig) -> None:
+    # shade contiguous segments w/ hard argmax state
+    # if we use soft_alpha, segment alpha is based on max prob at segment start
+    states = probs.argmax(axis=1)
+    maxp = probs.max(axis=1)
+
+    if cfg.use_soft_alpha:
+        alphas = np.clip(maxp, cfg.alpha_min, cfg.alpha_max)
     else:
-        alpha = np.full(len(x), cfg.max_alpha)
-    
+        alphas = np.full(len(x), cfg.alpha_max)
+
     start = 0
-    for t in range(1, len(x)+1):
-        if t == len(x) or state[t] != state[start]:
-            k = int(state[start])
+    for i in range(1, len(x) + 1):
+        if i == len(x) or states[i] != states[start]:
+            k = int(states[start])
+            color = cfg.colors[k % len(cfg.colors)]
             ax.axvspan(
                 x[start],
-                x[t-1],
-                color=cfg.state_colors[k % len(cfg.state_colors)],
-                alpha=float(alpha[start])
-                linewidth=0
+                x[i - 1],
+                color=color,
+                alpha=float(alphas[start]),
+                linewidth=0,
             )
-            start = t
+            start = i
 
-def make_regime_shading_plot(cfg: RegimeShadingconfig,
-                             data_fp: Path,
-                             title: str | None = None,)-> Path: 
-    cfg.out_dir.mkdir(parents=True, exist_ok=True)
 
-    probs_df = _load_oos_regime_probs(cfg.artifact_dir)
-    price = _load_price_series(data_fp, cfg)
+def _compute_level_series(data: pd.DataFrame, cfg: RegimeShadingConfig) -> pd.Series:
+    # If price exists, prefer it
+    if cfg.price_col is not None and cfg.price_col in data.columns:
+        px = data[cfg.price_col].astype(float)
+        return np.log(px)
 
-    df = pd.DataFrame({"price": price}).join(probs_df, how="inner").dropna()
+    # Else use returns explicitly
+    if cfg.ret_col is not None and cfg.ret_col in data.columns:
+        r = data[cfg.ret_col].astype(float)
+        return np.log1p(r).cumsum()
 
-    prob_cols = [c for c in df.columns if c.startswith("p_state_")]
-    probs = df[prob_cols].to_numpy()
+    raise ValueError(
+        f"Could not build level series: missing price_col='{cfg.price_col}' and ret_col='{cfg.ret_col}'."
+    )
 
-    returns = df["price"].pct_change()
-    rv = _realized_vol(returns, cfg.rv_window)
+
+def _compute_vol_series(data: pd.DataFrame, cfg: RegimeShadingConfig) -> pd.Series:
+    if cfg.vol_col is not None and cfg.vol_col in data.columns:
+        return data[cfg.vol_col].astype(float)
+
+    if "ret" in data.columns:
+        r = data["ret"].astype(float)
+        return r.rolling(cfg.vol_fallback_window).std()
+
+    raise ValueError(f"Could not build vol series: missing '{cfg.vol_col}' and no 'ret' column found.")
+
+
+def make_regime_shading_plot(
+    data: pd.DataFrame,
+    cfg: RegimeShadingConfig,
+    title: Optional[str] = None,
+) -> Path:
+    """
+    data: processed dataset df (must include the same date index used for walk-forward)
+    cfg.oos_probs_csv: artifact output from evaluate_hmm_regime_ridge aggregation
+    """
+    oos = _load_oos_probs(cfg.oos_probs_csv)
+    pcols = _prob_cols(oos)
+    probs = oos[pcols].to_numpy(dtype=float)
+
+    # align to dates that exist in data
+    aligned = data.join(oos, how="inner")
+    if aligned.empty:
+        raise ValueError("No overlapping dates between data and OOS regime probs.")
+
+    # rebuild probs after join to preserve alignment
+    oos_aligned = aligned[pcols]
+    probs_aligned = oos_aligned.to_numpy(dtype=float)
+    x = aligned.index
+
+    level = _compute_level_series(aligned, cfg)
+    vol = _compute_vol_series(aligned, cfg)
+
+    cfg.out_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), sharex=True)
-    x = df.index
 
-    _shade(ax1, x, probs, cfg)
-    ax1.plot(x, np.log(df["price"]), lw=1.2)
-    ax1.set_ylabel("log price")
+    _shade_segments(ax1, x, probs_aligned, cfg)
+    ax1.plot(x, level, lw=1.2)
+    ax1.set_ylabel("log price" if (cfg.price_col and cfg.price_col in aligned.columns) else f"cum log(1+{cfg.ret_col})")
 
-    _shade(ax2, x, probs, cfg)
-    ax2.plot(x, rv, lw=1.2)
-    ax2.set_ylabel(f"realized vol ({cfg.rv_window}d)")
+    _shade_segments(ax2, x, probs_aligned, cfg)
+    ax2.plot(x, vol, lw=1.2)
+    ax2.set_ylabel(cfg.vol_col if (cfg.vol_col and cfg.vol_col in aligned.columns) else f"ret vol ({cfg.vol_fallback_window}d)")
     ax2.set_xlabel("date")
 
     if title:
         fig.suptitle(title)
-    
+
     fig.tight_layout()
-    out_fp = cfg.out_dir / "regime_shading.png"
-    fig.savefig(out_fp, dpi=200)
+    fig.savefig(cfg.out_path, dpi=200)
     plt.close(fig)
-    return out_fp
+    return cfg.out_path

@@ -10,7 +10,7 @@ from src.eval.metrics import (
     rmse,
     directional_accuracy,
     spearman_corr,
-    top_decile_hit_rate,  # rename if your function name differs (e.g., top_decile_precision)
+    top_decile_hit_rate, 
 )
 from src.eval.subsets import high_vol_mask, top_quantile_mask, apply_mask
 from src.eval.walk_forward import walk_forward_splits
