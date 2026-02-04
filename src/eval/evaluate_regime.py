@@ -28,6 +28,26 @@ class RegimeEvalConfig:
     hmm_min_covar: float
     seed: int
 
+def _transform_probs(probs: np.ndarray, mode: str, seed: int) -> np.ndarray:
+    if mode == "normal":
+        return probs
+    
+    T, K = probs.shape
+    
+    if mode == "uniform":
+        return np.full((T, K), 1.0 / K, dtype=float)
+
+    if mode == "no_regime":
+        out = np.zeros((T, K), dtype=float)
+        out[:, 0] = 1.0
+        return out
+    
+    if mode == "shuffle":
+        rng = np.random.default_rng(seed)
+        idx = rng.permutation(T)
+        return probs[idx]
+    
+    raise ValueError(f"Unknown probs_mode: {mode}")
 
 def evaluate_hmm_regime_ridge(
     df: pd.DataFrame,
@@ -38,16 +58,29 @@ def evaluate_hmm_regime_ridge(
     test_years: int,
     step_years: int,
     regime_cfg: RegimeEvalConfig,
-) -> Tuple[Dict[str, float], Optional[Dict[str, np.ndarray]], pd.DataFrame]:
+    probs_mode: str = "normal",
+    rng_seed: int = 0,
+) -> Tuple[
+    Dict[str, float],
+    Optional[Dict[str, np.ndarray]],
+    pd.DataFrame,
+    pd.Series,
+    pd.Series,
+]:
     """
     walk-forward eval for regime-conditioned Ridge using HMM regime probs.
 
-    for return targets: rmse, mae, directional_accuracy
-    for volatility targets: rmse, mae, spearman, top_decile_hit_rate,
-      plus stress subset metrics:
-      - *_hv_now: top decile of ret_vol_20 within each test window (current stress)
-      - *_hv_fut: top decile of y_true within each test window (future spike stress)
+    regime probs are inferred causally (train fit + online test filtering).
+    ablations operate by transforming probs passed to regressoin model
+
+    returns:
+        metrics_dict
+        hmm_info (interpretability snapshot from last train window HMM) or None
+        oos_regime_df: concatenated OOS regime probs with hard_state/max_prob indexed by date
+        y_true_oos: concatenated OOS true values indexed by date
+        y_pred_oos: concatenated OOS predictions indexed by date
     """
+
     is_vol_target = ("_absret_" in target) or ("_sqret_" in target)
 
     if is_vol_target:
@@ -67,12 +100,13 @@ def evaluate_hmm_regime_ridge(
             "mae": [],
             "directional_accuracy": [],
         }
-    y_true_oos = []
-    y_pred_oos = []
+
     last_hmm_res = None
     oos_rows: List[dict] = []
+    y_true_list: List[pd.Series] = []
+    y_pred_list: List[pd.Series] = []
 
-    for split in walk_forward_splits(df.index, train_years, test_years, step_years):
+    for split_idx, split in enumerate(walk_forward_splits(df.index, train_years, test_years, step_years)):
         train = df.loc[split.train_idx]
         test = df.loc[split.test_idx]
 
@@ -91,10 +125,9 @@ def evaluate_hmm_regime_ridge(
             min_covar=regime_cfg.hmm_min_covar,
             seed=regime_cfg.seed,
         )
-
         last_hmm_res = hmm_res
 
-        # Align probs to X/y lengths (HMM obs builder may drop NaNs)
+        # align to X/y lengths 
         n_train = min(len(X_train), hmm_res.train_probs.shape[0])
         n_test = min(len(X_test), hmm_res.test_probs.shape[0])
 
@@ -102,12 +135,12 @@ def evaluate_hmm_regime_ridge(
         ytr = y_train.iloc[-n_train:]
         Xte = X_test.iloc[-n_test:]
         yte = y_test.iloc[-n_test:]
-        test_aligned = test.iloc[-n_test:]  # aligns with yte/y_pred for hv_now
+        test_aligned = test.iloc[-n_test:]  # aligns with yte/y_pred for hv_now and regime rows
 
-        # collect strictly OOS regime probs aligned to Xte/yte
-        probs_oos = hmm_res.test_probs[-n_test:]
+        # collect OOS regime probabilities from the *true HMM filtering output*
+        probs_oos_true = hmm_res.test_probs[-n_test:]
         dates_oos = test_aligned.index
-        for d, p in zip(dates_oos, probs_oos):
+        for d, p in zip(dates_oos, probs_oos_true):
             row = {"date": d}
             for k in range(p.shape[0]):
                 row[f"p_state_{k}"] = float(p[k])
@@ -115,13 +148,26 @@ def evaluate_hmm_regime_ridge(
             row["max_prob"] = float(np.max(p))
             oos_rows.append(row)
 
-        model.fit(Xtr, ytr, hmm_res.train_probs[-n_train:])
-        y_pred = model.predict(Xte, hmm_res.test_probs[-n_test:])
+        # apply ablation transformation ONLY to what the regression model sees
+        train_probs_used = _transform_probs(
+            hmm_res.train_probs[-n_train:],
+            probs_mode,
+            seed=rng_seed + 10_000 + split_idx,
+        )
+        test_probs_used = _transform_probs(
+            hmm_res.test_probs[-n_test:],
+            probs_mode,
+            seed=rng_seed + 20_000 + split_idx,
+        )
 
-        y_true_oos.append(pd.Series(yte, index=test_aligned.index))
-        y_pred_oos.append(pd.Series(y_pred, index=test_aligned.index))
+        model.fit(Xtr, ytr, train_probs_used)
+        y_pred = model.predict(Xte, test_probs_used)
 
-        # Full-sample metrics
+        # store OOS series for downstream per-regime tables / diagnostics
+        y_true_list.append(pd.Series(np.asarray(yte, dtype=float), index=test_aligned.index))
+        y_pred_list.append(pd.Series(np.asarray(y_pred, dtype=float), index=test_aligned.index))
+
+        # full-sample metrics
         metrics["rmse"].append(rmse(yte, y_pred))
         metrics["mae"].append(mae(yte, y_pred))
 
@@ -147,23 +193,30 @@ def evaluate_hmm_regime_ridge(
                 metrics["mae_hv_fut"].append(mae(yt_fut, yp_fut))
         else:
             metrics["directional_accuracy"].append(directional_accuracy(yte, y_pred))
-    
+
+    # interpretability snapshot from most recent training window
     hmm_info: Optional[Dict[str, np.ndarray]] = None
     if last_hmm_res is not None:
         hmm_info = hmm_interpretability(last_hmm_res.model, last_hmm_res.scaler)
-    
-    # build OOS regime probability df
+
+    # build OOS regime probability dataframe
     oos_df = pd.DataFrame(oos_rows)
     if len(oos_df) > 0:
         oos_df = oos_df.sort_values("date").drop_duplicates(subset=["date"], keep="last")
         oos_df["date"] = pd.to_datetime(oos_df["date"])
         oos_df = oos_df.set_index("date")
 
-    y_true_oos = pd.concat(y_true_oos).sort_index()
-    y_pred_oos = pd.concat(y_pred_oos).sort_index()
+    # build concatenated OOS y series
+    if y_true_list:
+        y_true_oos = pd.concat(y_true_list).sort_index()
+        y_pred_oos = pd.concat(y_pred_list).sort_index()
+    else:
+        y_true_oos = pd.Series(dtype=float)
+        y_pred_oos = pd.Series(dtype=float)
 
-    # safe aggregation
+    # aggregate metrics
     out: Dict[str, float] = {}
     for k, v in metrics.items():
         out[k] = float(np.mean(v)) if len(v) else float("nan")
+
     return out, hmm_info, oos_df, y_true_oos, y_pred_oos
