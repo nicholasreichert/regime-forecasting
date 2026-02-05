@@ -16,6 +16,7 @@ from src.models.regime_conditioned import RegimeConditionedRidge
 from src.experiments.logging import utc_run_id, pack_params, save_results_csv
 from src.experiments.selections import select_best_models, save_best_models
 from src.experiments.regime_shading import RegimeShadingConfig, make_regime_shading_plot
+from src.experiments.per_regime_compare import PerRegimeCompareConfig, compute_per_regime_comparison
 
 
 def _pretty(metrics: dict) -> dict:
@@ -195,6 +196,47 @@ def main() -> None:
     results_df = results_df[~results_df["model"].str.contains("_no_regime|_uniform|_shuffle", regex=True)]
     best_df = select_best_models(results_df)
     best_run_path, best_latest_path = save_best_models(best_df, out_dir=out_dir, run_id=run_id)
+    # per-regime Ridge vs HMM comparison for winners
+    for _, r in best_df.iterrows():
+        target = r["target"]
+
+        model_name = None
+        if "best_hv_fut_model" in best_df.columns:
+            m = r.get("best_hv_fut_model", None)
+            if isinstance(m, str) and m and not pd.isna(m):
+                model_name = m
+        
+        if model_name is None:
+            model_name = r["best_overall_model"]
+        
+        # only run per-regime compare when winner is HMM-regime model
+        regime_dir = Path("artifacts") / "regimes" / run_id / target / str(model_name)
+        probs_csv = regime_dir / "oos_regime_probs.csv"
+        hmm_preds_csv = regime_dir / "oos_predictions.csv"
+
+        if not(probs_csv.exists() and hmm_preds_csv.exists()):
+            continue
+
+        try:
+            cfg_compare = PerRegimeCompareConfig(
+                processed_parquet=ds.processed_path,
+                oos_probs_csv=probs_csv,
+                hmm_oos_predictions_csv=hmm_preds_csv,
+                target=target,
+                train_years=cfg.evaluation.train_years,
+                test_years=cfg.evaluation.test_years,
+                step_years=cfg.evaluation.step_years,
+                ridge_alpha = 1.0,
+                out_compare_csv=regime_dir / "per_regime_compare_ridge_vs_hmm.csv",
+                out_pubready_csv=regime_dir / "per_regime_pubready_table.csv",
+                out_latex = regime_dir / "per_regime_pubready_table.tex",
+                out_plot_path=regime_dir / "plots" / "hv_fut_concentration_by_regime.png",
+                hv_fut_q=0.9,
+            )
+            outp = compute_per_regime_comparison(cfg_compare)
+            print(f"[per-regime] wrote {outp}")
+        except Exception as e:
+            print(f"[per-regime] failed for {target} | {model_name}: {e}")
 
     print(f"Saved best-model summary to: {best_run_path}")
     print(f"Updated best-model pointer: {best_latest_path}")
