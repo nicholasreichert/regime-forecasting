@@ -1,0 +1,2 @@
+splits_used,splits_failed_or_collapsed,mu_low_mean,mu_mid_mean,mu_high_mean,gap_low_mid_mean,gap_low_mid_std,gap_mid_high_mean,gap_mid_high_std,gap_low_high_mean,gap_low_high_std,p_gap_low_mid_pos,p_gap_mid_high_pos
+14,0,0.005356490725538516,0.009708576762605703,0.020344540075275804,0.004352086037067187,0.001646900559752606,0.0106359633126701,0.004785410671008124,0.014988049349737288,0.006304689545693359,1.0,1.0
