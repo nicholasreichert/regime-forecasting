@@ -97,7 +97,7 @@ def main() -> None:
     if not per_regime_csv.exists():
         raise FileNotFoundError(f"Missing per-regime comparison CSV: {per_regime_csv}")
 
-    title = f"hv_fut RMSE by regime ({args.target})"
+    title = f"hv_fut RMSE by regime ({args.target})" 
 
     plot_hvfut_rmse_by_regime(
         per_regime_compare_csv=per_regime_csv,

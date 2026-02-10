@@ -196,6 +196,7 @@ def main() -> None:
     results_df = results_df[~results_df["model"].str.contains("_no_regime|_uniform|_shuffle", regex=True)]
     best_df = select_best_models(results_df)
     best_run_path, best_latest_path = save_best_models(best_df, out_dir=out_dir, run_id=run_id)
+    
     # per-regime Ridge vs HMM comparison for winners
     for _, r in best_df.iterrows():
         target = r["target"]
