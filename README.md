@@ -12,7 +12,7 @@ The core idea is to combine online Hidden Markov Models (HMMs) for regime detect
     * Custom HMM filtering with no lookahead
     * Online inference only on information available at prediction time
 * Regime-conditioned forecasting
-    * Ridge regressoin conditioned on inferred market regimes
+    * Ridge regression conditioned on inferred market regimes
     * Both _hard_ (argmax) and _soft_ (probability-weighted) regime conditioning
 * Evaluation protocol
     * Walk-forward eval with strict train/test separation
