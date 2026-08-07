@@ -259,6 +259,10 @@ def make_regime_characterization_table(run_dir: Path, data: pd.DataFrame) -> Non
 
 
 def make_protocol_table() -> None:
+    from src.experiments.protocol_ablation import PROTOCOLS
+
+    PROTOCOL_LABEL = {p.name: p.label for p in PROTOCOLS}
+
     fp = STUDY / "protocol_ablation" / "protocol_ablation.csv"
     if not fp.exists():
         print(f"[skip] {fp} not found")
@@ -287,7 +291,10 @@ def make_protocol_table() -> None:
         sub = df[df["protocol"] == proto]
         if sub.empty:
             continue
-        label = str(sub.iloc[0]["protocol_label"])
+        # Take the label from the protocol definition rather than from the stored
+        # CSV: the numbers are what the run produced, but the wording of a stage
+        # should not require a 20-minute refit to change.
+        label = PROTOCOL_LABEL.get(proto, str(sub.iloc[0]["protocol_label"]))
         cells = []
         for h in HORIZONS:
             r = sub[sub["horizon"] == h]
@@ -360,7 +367,7 @@ def make_protocol_figure() -> None:
     ax.axhline(0, color="black", lw=1)
     ax.set_xticks(xs)
     ax.set_xticklabels(
-        ["P0\nas-published", "P1\n+baseline", "P2\n+embargo", "P3\n+nested sel.", "P4\n+RV target"],
+        ["P0\noriginal", "P1\n+baseline", "P2\n+embargo", "P3\n+nested sel.", "P4\n+RV target"],
         fontsize=8,
     )
     ax.set_ylabel("Improvement over pooled ridge (%)")

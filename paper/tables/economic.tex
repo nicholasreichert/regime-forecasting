@@ -1,0 +1,24 @@
+\begin{table}[t]
+\caption{Economic evaluation, median over 20 assets. Volatility targeting sizes a position at $\sigma^{\text{target}}/\hat\sigma_t$ for a 10\% annualised target; the reported error is $|\text{realised}-\text{target}|$ annualised volatility, so lower is better. VaR is at the 5\% level with the forecast-to-quantile scaling calibrated by filtered historical simulation on a trailing window, evaluated at $h{=}1$ where the realised signed return is unambiguous. ``Pass CC'' is the share of assets passing Christoffersen conditional coverage at 5\%.}
+\label{tab:economic}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
+\toprule
+& \multicolumn{3}{c}{Vol-target error} & \multicolumn{2}{c}{VaR (5\%, $h{=}1$)} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-6}
+Model & $h{=}1$ & $h{=}5$ & $h{=}20$ & Rate & Pass CC \\
+\midrule
+Ridge (pooled) & 0.0375 & 0.0104 & 0.0049 & 0.052 & 95\% \\
+HAR & 0.0347 & 0.0099 & 0.0040 & 0.052 & 95\% \\
+GARCH(1,1) & 0.0337 & 0.0093 & 0.0031 & 0.052 & 90\% \\
+EWMA & 0.0350 & 0.0109 & 0.0040 & 0.052 & 75\% \\
+Gradient boosting (pooled) & 0.0389 & 0.0116 & 0.0074 & 0.053 & 65\% \\
+\midrule
+\textbf{Regime gating} & 0.0370 & 0.0111 & 0.0056 & 0.053 & 95\% \\
+\textbf{Regime as features} & 0.0369 & 0.0119 & 0.0056 & 0.053 & 95\% \\
+\textbf{Regime gating, shrunk} & 0.0360 & 0.0099 & 0.0046 & 0.051 & 95\% \\
+\textbf{Regime gating, GBM experts} & 0.0392 & 0.0130 & 0.0085 & 0.053 & 65\% \\
+\bottomrule
+\end{tabular}
+\end{table}

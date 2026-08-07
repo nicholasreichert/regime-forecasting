@@ -1,7 +1,10 @@
 """How much of the apparent regime-switching gain is manufactured by the protocol?
 
-Four methodological choices, each individually defensible-looking, are common in
-applied regime-switching work:
+P0 is this project's own first implementation, before any of the corrections in
+this paper were applied. It is not a reconstruction of any particular published
+study, and we do not claim any specific paper makes all four of these choices
+together. What we can say is that each is individually easy to make and hard to
+notice, and that all four were present in code written in good faith:
 
 P0  the multi-horizon target is a point-in-time transform of the single return
     h days ahead rather than realized volatility over [t+1, t+h];
@@ -15,7 +18,7 @@ P3  the number of regimes and the gating rule are chosen by out-of-sample score,
 This module starts from all four in place and removes them one at a time,
 reporting the regime model's improvement over its matched pooled-ridge baseline
 at each stage. The point is not that any single choice is fatal, but that they
-compound.
+compound, and that the compounded result is statistically significant.
 """
 
 from __future__ import annotations
@@ -53,7 +56,7 @@ class Protocol:
 
 
 PROTOCOLS: tuple[Protocol, ...] = (
-    Protocol("P0", "as-published", "absret", False, False, False),
+    Protocol("P0", "our original implementation", "absret", False, False, False),
     Protocol("P1", "+ tuned/standardized baseline", "absret", True, False, False),
     Protocol("P2", "+ train/test embargo", "absret", True, True, False),
     Protocol("P3", "+ nested selection", "absret", True, True, True),

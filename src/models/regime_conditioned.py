@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Sequence
+from typing import Callable, Dict, List, Literal, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -48,9 +48,18 @@ class RegimeConditionedRidge:
     min_points_per_regime: int = 200
     alphas: tuple[float, ...] = field(default=DEFAULT_ALPHAS)
     standardize: bool = True
+    # Swap in a different expert family (e.g. gradient boosting) to test whether
+    # the result is an artefact of linear experts. Each call must return a fresh
+    # unfitted estimator with the usual fit/predict interface.
+    expert_factory: Optional[Callable[[], object]] = None
+
+    def _new_expert(self):
+        if self.expert_factory is not None:
+            return self.expert_factory()
+        return _make_ridge(self.alpha, self.alphas, self.standardize)
 
     def __post_init__(self):
-        self.global_model = _make_ridge(self.alpha, self.alphas, self.standardize)
+        self.global_model = self._new_expert()
         self.models: Dict[int, Pipeline] = {}
         self.regimes_trained: List[int] = []
 
@@ -62,7 +71,7 @@ class RegimeConditionedRidge:
         hard = train_probs.argmax(axis=1)
 
         # global fallback expert, fitted on the pooled training window
-        self.global_model = _make_ridge(self.alpha, self.alphas, self.standardize)
+        self.global_model = self._new_expert()
         self.global_model.fit(X, y)
 
         self.models = {}
@@ -72,7 +81,7 @@ class RegimeConditionedRidge:
             idx = np.where(hard == k)[0]
             if len(idx) < self.min_points_per_regime:
                 continue
-            m = _make_ridge(self.alpha, self.alphas, self.standardize)
+            m = self._new_expert()
             m.fit(X.iloc[idx], y.iloc[idx])
             self.models[k] = m
             self.regimes_trained.append(k)
@@ -106,3 +115,62 @@ class RegimeConditionedRidge:
             return np.sum(expert_preds * w, axis=1)
 
         raise ValueError(f"Unknown mode: {self.mode}")
+
+    def predict_shrunk(self, X: pd.DataFrame, probs: np.ndarray, lam: float) -> np.ndarray:
+        """Gated prediction shrunk toward the pooled fit.
+
+        ``lam = 0`` is the full mixture, ``lam = 1`` is the pooled ridge, and
+        intermediate values interpolate. For linear experts sharing a feature
+        set, shrinking predictions is identical to shrinking coefficients --
+        ``lam * (b_pooled . x) + (1-lam) * (b_k . x) = (lam*b_pooled +
+        (1-lam)*b_k) . x`` -- so this is coefficient shrinkage, expressed in the
+        cheaper form.
+
+        This is the variant the ablation results point at: it keeps the regime
+        signal while paying only part of the statistical cost of splitting the
+        training window.
+        """
+        gated = self.predict(X, probs)
+        if lam <= 0.0:
+            return gated
+        pooled = self.global_model.predict(X)
+        if lam >= 1.0:
+            return pooled
+        return lam * pooled + (1.0 - lam) * gated
+
+
+@dataclass
+class RegimeFeatureRidge:
+    """Single pooled ridge with the regime posteriors appended as features.
+
+    The complement to gating: the regime signal is made available to the model
+    without partitioning the training data at all, so it pays none of the
+    efficiency cost that :class:`RegimeConditionedRidge` incurs. If the
+    regime state carries usable information, this is the cheapest way to spend
+    it, and it is the obvious thing to try once gating is shown to lose.
+    """
+
+    alpha: Optional[float] = None
+    alphas: tuple[float, ...] = field(default=DEFAULT_ALPHAS)
+    include_confidence: bool = True
+
+    def __post_init__(self):
+        self.model = _make_ridge(self.alpha, self.alphas)
+
+    @staticmethod
+    def _augment(X: pd.DataFrame, probs: np.ndarray, include_confidence: bool) -> pd.DataFrame:
+        cols = {f"regime_p{k}": probs[:, k] for k in range(probs.shape[1])}
+        if include_confidence:
+            # posterior sharpness: how certain the filter is, not just where it points
+            cols["regime_maxp"] = probs.max(axis=1)
+        return pd.concat([X.reset_index(drop=True), pd.DataFrame(cols)], axis=1).set_index(X.index)
+
+    def fit(self, X: pd.DataFrame, y: pd.Series, train_probs: np.ndarray) -> "RegimeFeatureRidge":
+        if len(X) != len(y) or len(X) != train_probs.shape[0]:
+            raise ValueError("X, y, train_probs must have aligned lengths.")
+        self.model = _make_ridge(self.alpha, self.alphas)
+        self.model.fit(self._augment(X, train_probs, self.include_confidence), y)
+        return self
+
+    def predict(self, X: pd.DataFrame, probs: np.ndarray) -> np.ndarray:
+        return self.model.predict(self._augment(X, probs, self.include_confidence))

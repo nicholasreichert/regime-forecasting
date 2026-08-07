@@ -1,0 +1,20 @@
+\begin{table}[t]
+\caption{Every way of using the regime signal, against the pooled ridge, over 60 asset-horizon pairs. ``Median'' is the median improvement in percent (positive favours the row). ``Wins'' counts pairs where the row beats the pooled ridge; ``sig.\ better'' and ``sig.\ worse'' count Diebold--Mariano rejections at 5\%. No regime variant achieves a single significant improvement in 240 tests, whereas GARCH and EWMA---which ignore regimes entirely---beat the pooled ridge more often than not.}
+\label{tab:variants}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrr}
+\toprule
+Model & Median & Wins & sig.\ better & sig.\ worse \\
+\midrule
+Regime gating (full mixture) & -2.30\% & 2/60 & 0 & 37 \\
+\quad with time-shuffled gate & -3.14\% & 3/60 & 0 & 40 \\
+Regime gating, shrunk to pooled & -0.72\% & 11/60 & 0 & 18 \\
+\midrule
+Regime posteriors as features & -0.63\% & 4/60 & 0 & 31 \\
+HAR & -0.13\% & 26/60 & 7 & 8 \\
+GARCH(1,1) & +0.59\% & 39/60 & 4 & 3 \\
+EWMA & +0.42\% & 33/60 & 14 & 9 \\
+\bottomrule
+\end{tabular}
+\end{table}

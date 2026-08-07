@@ -26,3 +26,4 @@ reports/figures/
 .DS_Store
 Thumbs.db
 uv.lock
+artifacts/study/multi_asset/predictions/
