@@ -52,15 +52,16 @@ continuously in trailing realized volatility. We also find that the spread
 induced purely by the HMM's random initialization is of the same order as the
 effect being measured, so single-seed comparisons are uninformative.
 
-We then quantify how a positive result can be manufactured. Starting from a
-protocol that combines four individually plausible choices---a multi-horizon
-target that is really a single-day target at longer lead, an unstandardized
-fixed-penalty baseline, no train/test embargo, and selection of the regime
-hyperparameters on the test score---the regime model shows a statistically
-significant improvement over its baseline. Removing the four choices one at a
-time drives that improvement to zero and then negative; correcting the baseline
-alone is enough to flip the sign. We release the full pipeline and propose a
-short checklist for evaluating regime-switching forecasters.
+We then quantify how a positive result can be manufactured, using this project's
+own first implementation as the starting point. That implementation combined four
+choices---a multi-horizon target that is really a single-day target at longer
+lead, an unstandardized fixed-penalty baseline, no train/test embargo, and
+selection of the regime hyperparameters on the test score---and under it the
+regime model shows a statistically significant improvement over its baseline.
+Removing the four one at a time drives that improvement to zero and then
+negative; correcting the baseline alone is enough to flip the sign. We release
+the full pipeline and propose a short checklist for evaluating regime-switching
+forecasters.
 \end{abstract}
 
 \keywords{volatility forecasting, regime switching, hidden Markov models,
@@ -113,10 +114,10 @@ much of the original effect each methodological shortcut contributed.
     the data costs $2.75$, and the difference is the result. The signal is real
     but is dominated by the cost of the mechanism used to exploit it.
 
-  \item \textbf{A protocol ablation.} We quantify how much apparent improvement
-    is produced by each of four common evaluation shortcuts, and show that they
-    compound: together they turn a $-1\%$ result into a statistically
-    significant $+2\%$ one.
+  \item \textbf{A protocol ablation.} Taking our own first implementation as the
+    starting point, we quantify how much apparent improvement each of four
+    evaluation shortcuts produces, and show that they compound: together they
+    turn a $-4\%$ result into a statistically significant $+2\%$ one.
 
   \item \textbf{Seed sensitivity.} We show that the spread across HMM random
     initializations alone is comparable to the reported effect size, which we
@@ -440,8 +441,16 @@ sides of that trade.
 
 Table~\ref{tab:protocol} and Figure~\ref{fig:protocol} trace the improvement of
 the regime model over its matched pooled-ridge baseline as four methodological
-choices are corrected in sequence, starting from a configuration that combines
-all four. The model is unchanged throughout; only the protocol moves.
+choices are corrected in sequence. The model is unchanged throughout; only the
+protocol moves.
+
+The starting point, P0, is this project's own first implementation, written
+before any of the corrections in this paper were applied. We want to be explicit
+that it is not a reconstruction of any published study, and we make no claim that
+any particular paper combines all four choices. The claim is narrower and, we
+think, more useful: these four are individually easy to make, each survived our
+own code review, and together they produce a significant positive result on a
+method that does not work.
 
 Under P0---aliased target, unstandardized fixed-penalty baseline, no embargo,
 and $K$ and the gating rule chosen by out-of-sample score---the regime model
@@ -455,12 +464,15 @@ single largest correction---and the corrected target (P4) leaves the regime mode
 between $3.4\%$ and $4.4\%$ worse than the pooled ridge, significantly so at
 every horizon.
 
-We want to be precise about what this does and does not show. Each individual
-choice in P0 has a defensible-sounding rationale, and none of them is fraud;
-they are the kind of thing that survives a code review because each looks local
-and harmless. The point is that their effects compound in the same direction,
-because all four increase the flexibility of the proposed model relative to its
-benchmark. The headline number is not robust to any of them.
+The reason they compound is not coincidence: all four increase the flexibility of
+the proposed model relative to its benchmark, so their effects share a sign. That
+is also why no single one of them looks alarming in isolation. The literature has
+documented each failure mode separately---leakage across a train/test boundary
+\cite{lopezdeprado2018, kapoor2023leakage}, selection reported as evaluation
+\cite{bailey2014, harvey2016}, and under-specified baselines
+\cite{dacrema2019}---but the interaction is what turns a $-4\%$ result into a
+significant $+2\%$ one, and interactions are not what a checklist applied one
+item at a time will catch.
 
 \subsection{Does the null hold away from SPY?}
 \label{sec:multiasset}

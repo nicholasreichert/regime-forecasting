@@ -40,7 +40,7 @@ answer gets manufactured by four common evaluation shortcuts.
 
    | | h=1 | h=5 | h=20 |
    |---|---|---|---|
-   | P0 as-published | **+1.93%** (p=0.001) | **+1.25%** (p=0.001) | +0.63% (p=0.183) |
+   | P0 our original implementation | **+1.93%** (p=0.001) | **+1.25%** (p=0.001) | +0.63% (p=0.183) |
    | P1 + tuned/standardized baseline | −1.03% | −0.37% | −0.23% |
    | P2 + train/test embargo | −1.06% | −0.34% | −0.19% |
    | P3 + nested selection | −3.69% | −1.02% | −0.76% |
