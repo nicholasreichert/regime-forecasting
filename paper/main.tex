@@ -30,76 +30,35 @@ Regime Detection, Redundancy, and Why Conditioning Does Not Help}
 \email{reichert.n@northeastern.edu}
 
 \begin{abstract}
-Hidden Markov models are a standard tool for detecting latent market regimes,
-and conditioning a forecaster on the inferred regime is widely reported to
-improve prediction, particularly under stress. We re-examine that claim for
-equity volatility forecasting under a deliberately conservative protocol:
-regimes are inferred by strict online filtering with no lookahead, the
-train/test boundary is purged by the forecast horizon, the number of regimes and
-the gating rule are selected on an inner validation block rather than on the
-test data, and the regime model is compared against properly specified
-volatility benchmarks (HAR, GARCH(1,1), EWMA) rather than against a naive mean.
+Conditioning a forecaster on a hidden-Markov-model regime is widely reported to
+improve volatility prediction. Under a protocol with strictly causal filtering,
+an embargoed train/test boundary, hyperparameters selected inside the training
+window, and HAR, GARCH(1,1) and EWMA benchmarks, it does not. A pooled ridge on
+identical features wins in 58 of 60 asset-horizon pairs across 20 assets, and no
+regime variant achieves a significant improvement in 240 Diebold--Mariano tests.
 
-Under this protocol, regime conditioning does not improve volatility forecasts.
-Across 20 assets spanning equity indices, sectors, single names, rates, credit,
-commodities, FX and crypto, a pooled ridge regression on identical features
-beats the regime-conditioned mixture in 58 of 60 asset-horizon pairs (median
-$-2.3\%$ RMSE), significantly so in 37; the regime model is significantly better
-than the pooled ridge in none of them, and is never significantly better than
-HAR, GARCH(1,1) or EWMA under either squared-error or QLIKE loss.
+The cause is redundancy, not absence of signal: the inferred state is $95.7\%$
+recoverable from three trailing-volatility features the model already reads
+continuously, so every route of injecting it---gating, shrinkage, or the
+posteriors as features---adds estimation noise and nothing else.
 
-We decompose the failure by testing every route the regime signal can take into
-the model. Injecting the posteriors as features, with no partitioning at all,
-costs $1.16$ points of RMSE; gating on them costs a further $1.59$; shrinking the
-gated mixture toward the pooled fit does not recover the difference. Correct
-regime timing is worth a small but real $+0.69$ points relative to a
-time-shuffled gate (Wilcoxon $p = 0.023$), which is not enough to offset either
-cost. Across the four variants and 240 Diebold--Mariano tests, not one shows a
-significant improvement.
+Simulation on data whose generating process we control locates the failure in
+the estimator. Two diagnostics that applied work routinely reports do not
+identify regimes at all: state separation is as large in a GARCH world with no
+discrete states as in one with genuine Markov switching, and reported transition
+persistence is largely manufactured by an overlapping rolling-volatility
+emission---fitted to i.i.d.\ noise, the model reports substantial persistence
+that vanishes when that feature is removed. Because Baum--Welch identifies
+states by their emission distribution, it recovers states differing in
+volatility \emph{level}, which trailing volatility already reveals, and misses
+states differing in volatility \emph{dynamics}, which would carry incremental
+information. A de-overlapped diagnostic that does discriminate returns
+$-0.001$ on SPY, below a GARCH process containing no regimes.
 
-The explanation is redundancy rather than absence of signal. The fitted
-high-volatility state is a good stress classifier---16\% of the sample, 59\% of
-all volatility spikes, a $3.6\times$ lift---but it is also recoverable with
-$95.7\%$ accuracy from the three HAR components alone, against a $46.2\%$ base
-rate. It is a noisy, three-level, annually-refitted re-encoding of a quantity
-every model already reads continuously and without estimation error.
-
-A simulation study on data whose answer we know shows the problem is not our
-implementation, and locates it in the estimator. Regime conditioning helps where
-regimes genuinely exist, so the pipeline works; real returns behave like a
-GARCH process with no discrete states at all. Two diagnostics that applied work
-routinely reports turn out not to identify regimes: state separation is as large
-in a world with no regimes as in one with them, and the reported persistence of
-the transition matrix is mostly an artefact of including an overlapping
-rolling-volatility feature in the emission vector---fitted to i.i.d.\ noise, the
-HMM reports substantial persistence that vanishes exactly when that feature is
-removed. Most strikingly, Baum--Welch identifies states by their emission
-distribution, so it finds states that differ in volatility \emph{level}---which
-trailing volatility already reveals---and largely misses states that differ in
-volatility \emph{dynamics}, which are the ones that would carry incremental
-information.
-
-Three further checks agree. Gradient-boosted experts do not rescue the method.
-Under a Model Confidence Set the regime mixture is retained in $28\%$ of
-asset-horizon pairs against $78\%$ for GARCH(1,1). Under a decision-relevant
-loss---volatility targeting---the regime models are statistically
-indistinguishable from the pooled ridge rather than behind it, but GARCH and HAR
-are significantly ahead of both. We report equivalence bounds rather than bare
-$p$-values: in the median pair the data exclude improvements of \emph{any} size
-at 95\% confidence. Finally, the spread induced purely by the HMM's random
-initialization is of the same order as the effect being measured, so single-seed
-comparisons are uninformative.
-
-We then quantify how a positive result can be manufactured, using this project's
-own first implementation as the starting point. That implementation combined four
-choices---a multi-horizon target that is really a single-day target at longer
-lead, an unstandardized fixed-penalty baseline, no train/test embargo, and
-selection of the regime hyperparameters on the test score---and under it the
-regime model shows a statistically significant improvement over its baseline.
-Removing the four one at a time drives that improvement to zero and then
-negative; correcting the baseline alone is enough to flip the sign. We release
-the full pipeline and propose a short checklist for evaluating regime-switching
-forecasters.
+We close by showing how a positive result is manufactured: four ordinary
+evaluation shortcuts, present in this project's own first implementation, turn a
+$-4\%$ result into a significant $+2\%$ one, and correcting the baseline alone
+flips the sign. We release the pipeline and a checklist.
 \end{abstract}
 
 \keywords{volatility forecasting, regime switching, hidden Markov models,
@@ -434,6 +393,7 @@ Holm--Bonferroni correction within each target.
 
 %======================================================================
 \section{Results}
+\label{sec:results}
 %======================================================================
 
 \subsection{Main comparison}
@@ -792,35 +752,6 @@ condition on volatility continuously and stop. If it returns something
 materially positive, prefer joint estimation to the two-stage pipeline---but
 expect it to find only regimes that differ in level.
 
-\subsection{Nonlinear experts}
-\label{sec:nonlinear}
-
-A natural objection is that our experts are linear, and that a regime label
-would earn its keep only if it gated genuinely different functional forms. We
-therefore repeat the comparison with gradient-boosted experts, pooled and gated,
-holding $K$ fixed at 3.
-
-The objection does not survive, but not for the reason we expected. Gradient
-boosting is substantially \emph{worse} than ridge at this task---a median
-$6.03\%$ higher RMSE pooled, and it wins in $0$ of $60$ pairs---which is
-consistent with the long-standing observation that realized volatility is close
-to linear in its own lagged components, the fact HAR is built on
-\cite{corsi2009}. Gating those experts leaves them at $6.29\%$, so the whole
-branch is uncompetitive regardless of how the regime signal is used.
-
-The interesting part is the gating cost. With ridge experts, gating costs
-$2.30$ points (Wilcoxon $p = 1.6\times10^{-10}$); with boosted experts it costs
-$0.11$ points and is indistinguishable from zero ($p = 0.37$). We had predicted
-the opposite in an earlier draft---that more flexible experts would make the
-partition more expensive, since each is fitted on a fraction of the window---and
-that prediction is wrong. The likelier explanation is that a boosted model can
-already represent regime-dependent behaviour internally through its splits, so
-explicit gating is redundant rather than costly, and that its own variance
-dominates any marginal partition effect. We record the failed prediction because
-it bears on the paper's method: the partition cost is a property of the expert
-family, not a universal, and our decomposition in Section~\ref{sec:variants}
-should be read as describing linear experts specifically.
-
 \subsection{Which models are actually best?}
 \label{sec:mcs}
 
@@ -847,56 +778,6 @@ and its explanation is deflationary: shrinkage selected on the inner split pulls
 it most of the way back toward the pooled ridge, so what survives is largely the
 ridge. Across all four regime variants and both losses, no variant is retained
 as often as the simplest volatility model in the comparison.
-
-\subsection{Does it pay for a decision?}
-\label{sec:economic}
-
-\input{tables/economic}
-
-Squared error is not what volatility forecasts are for. A model with worse RMSE
-but a $3.6\times$ lift on stress classification could still be the better input
-to a risk system, and if it were, that would be this paper's one positive
-finding. We test two standard uses.
-
-\emph{Volatility targeting.} Position size is set to
-$\sigma^{\text{target}}/\hat\sigma_t$ for a $10\%$ annualised target
-\cite{moreira2017}, and we measure how far realized volatility lands from that
-target. This has no distributional assumption and the loss is directly
-interpretable.
-
-\emph{Value-at-Risk.} The forecast is converted to a $5\%$ quantile by filtered
-historical simulation on a trailing window---so the scaling uses only past
-information---and coverage is tested with Kupiec \cite{kupiec1995} and
-Christoffersen \cite{christoffersen1998}.
-
-The economic evidence, in Table~\ref{tab:economic}, is softer than the
-statistical evidence and in one respect kinder to regime conditioning. On
-volatility targeting, no regime variant differs significantly from the pooled
-ridge: the full mixture is
-marginally worse (paired Wilcoxon $p = 0.053$) and the shrunk mixture marginally
-better ($p = 0.34$), neither conclusive. So under a decision-relevant loss the
-regime models are merely \emph{indistinguishable} from the pooled ridge, rather
-than significantly behind it as they are under RMSE. That difference between
-loss functions is worth recording.
-
-It does not, however, amount to a case for regime conditioning, because the
-regime-free benchmarks are significantly better than both. GARCH(1,1) reduces
-the volatility-targeting error relative to the pooled ridge at every horizon
-($p < 10^{-4}$, better in 43 of 60 pairs) and HAR does so too ($p = 0.006$).
-Whatever the regime models are indistinguishable from, it is not the frontier.
-
-The VaR results are largely uninformative about model quality, and we say so
-rather than presenting them as support. Because filtered historical simulation
-recalibrates the forecast-to-quantile scaling on a trailing window, it absorbs
-level errors, and every non-degenerate model attains roughly nominal coverage
-($5.1$--$5.3\%$) and passes conditional coverage in $85$--$95\%$ of assets. The
-one model that fails badly---the random walk in realized volatility, passing in
-$10\%$ of assets---does so because its forecasts are erratic rather than
-mis-levelled. The dimension that does separate models is the average VaR level
-at matched coverage, i.e.\ how much capital the forecast ties up, and there the
-regime mixture is the least efficient of the well-calibrated models
-($-0.0211$ against $-0.0207$ for GARCH). The margin is small and we would not
-build an argument on it.
 
 \subsection{What the data can exclude}
 \label{sec:equivalence}
@@ -1168,6 +1049,95 @@ lookahead check described in Section~\ref{sec:protocol-def}: filtered
 probabilities are recomputed on truncated inputs and asserted equal, so a
 regression to smoothed posteriors would fail the suite rather than quietly
 improve the results. Code, configuration and artifacts accompany the submission.
+
+
+%======================================================================
+\appendix
+\section{Additional robustness checks}
+\label{sec:appendix}
+%======================================================================
+
+Both checks below confirm the conclusions of Section~\ref{sec:results} without altering them, and are reported here to keep the main text on the argument rather than on its corroboration.
+
+\subsection{Nonlinear experts}
+\label{sec:nonlinear}
+
+A natural objection is that our experts are linear, and that a regime label
+would earn its keep only if it gated genuinely different functional forms. We
+therefore repeat the comparison with gradient-boosted experts, pooled and gated,
+holding $K$ fixed at 3.
+
+The objection does not survive, but not for the reason we expected. Gradient
+boosting is substantially \emph{worse} than ridge at this task---a median
+$6.03\%$ higher RMSE pooled, and it wins in $0$ of $60$ pairs---which is
+consistent with the long-standing observation that realized volatility is close
+to linear in its own lagged components, the fact HAR is built on
+\cite{corsi2009}. Gating those experts leaves them at $6.29\%$, so the whole
+branch is uncompetitive regardless of how the regime signal is used.
+
+The interesting part is the gating cost. With ridge experts, gating costs
+$2.30$ points (Wilcoxon $p = 1.6\times10^{-10}$); with boosted experts it costs
+$0.11$ points and is indistinguishable from zero ($p = 0.37$). We had predicted
+the opposite in an earlier draft---that more flexible experts would make the
+partition more expensive, since each is fitted on a fraction of the window---and
+that prediction is wrong. The likelier explanation is that a boosted model can
+already represent regime-dependent behaviour internally through its splits, so
+explicit gating is redundant rather than costly, and that its own variance
+dominates any marginal partition effect. We record the failed prediction because
+it bears on the paper's method: the partition cost is a property of the expert
+family, not a universal, and our decomposition in Section~\ref{sec:variants}
+should be read as describing linear experts specifically.
+
+\subsection{Does it pay for a decision?}
+\label{sec:economic}
+
+\input{tables/economic}
+
+Squared error is not what volatility forecasts are for. A model with worse RMSE
+but a $3.6\times$ lift on stress classification could still be the better input
+to a risk system, and if it were, that would be this paper's one positive
+finding. We test two standard uses.
+
+\emph{Volatility targeting.} Position size is set to
+$\sigma^{\text{target}}/\hat\sigma_t$ for a $10\%$ annualised target
+\cite{moreira2017}, and we measure how far realized volatility lands from that
+target. This has no distributional assumption and the loss is directly
+interpretable.
+
+\emph{Value-at-Risk.} The forecast is converted to a $5\%$ quantile by filtered
+historical simulation on a trailing window---so the scaling uses only past
+information---and coverage is tested with Kupiec \cite{kupiec1995} and
+Christoffersen \cite{christoffersen1998}.
+
+The economic evidence, in Table~\ref{tab:economic}, is softer than the
+statistical evidence and in one respect kinder to regime conditioning. On
+volatility targeting, no regime variant differs significantly from the pooled
+ridge: the full mixture is
+marginally worse (paired Wilcoxon $p = 0.053$) and the shrunk mixture marginally
+better ($p = 0.34$), neither conclusive. So under a decision-relevant loss the
+regime models are merely \emph{indistinguishable} from the pooled ridge, rather
+than significantly behind it as they are under RMSE. That difference between
+loss functions is worth recording.
+
+It does not, however, amount to a case for regime conditioning, because the
+regime-free benchmarks are significantly better than both. GARCH(1,1) reduces
+the volatility-targeting error relative to the pooled ridge at every horizon
+($p < 10^{-4}$, better in 43 of 60 pairs) and HAR does so too ($p = 0.006$).
+Whatever the regime models are indistinguishable from, it is not the frontier.
+
+The VaR results are largely uninformative about model quality, and we say so
+rather than presenting them as support. Because filtered historical simulation
+recalibrates the forecast-to-quantile scaling on a trailing window, it absorbs
+level errors, and every non-degenerate model attains roughly nominal coverage
+($5.1$--$5.3\%$) and passes conditional coverage in $85$--$95\%$ of assets. The
+one model that fails badly---the random walk in realized volatility, passing in
+$10\%$ of assets---does so because its forecasts are erratic rather than
+mis-levelled. The dimension that does separate models is the average VaR level
+at matched coverage, i.e.\ how much capital the forecast ties up, and there the
+regime mixture is the least efficient of the well-calibrated models
+($-0.0211$ against $-0.0207$ for GARCH). The margin is small and we would not
+build an argument on it.
+
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{references}
