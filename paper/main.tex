@@ -3,8 +3,18 @@
 \usepackage{booktabs}
 \usepackage{graphicx}
 \usepackage{amsmath}
+% acmart already pulls in the AMS symbols through newtxmath, which defines
+% \Bbbk; loading amssymb on top of it is a fatal redefinition. Releasing the
+% name first is the documented workaround and keeps \checkmark available.
+\let\Bbbk\relax
 \usepackage{amssymb}
 \usepackage{multirow}
+
+% Shrink a table to the column only when it would otherwise overflow. Several
+% result tables are generated programmatically and their width depends on the
+% data, so hand-tuning \tabcolsep per table would not survive a rerun.
+\newcommand{\fitwidth}[1]{%
+  \resizebox{\ifdim\width>\columnwidth\columnwidth\else\width\fi}{!}{#1}}
 
 \begin{document}
 
@@ -489,6 +499,7 @@ sides of that trade.
   evaluation protocol, not of the model. The model is identical in every bar;
   only the protocol changes.}
   \label{fig:protocol}
+  \Description{Grouped bar chart of the regime model's improvement over its baseline at five protocol stages, for three horizons. Bars are positive at stage P0 and negative at every later stage.}
 \end{figure}
 
 Table~\ref{tab:protocol} and Figure~\ref{fig:protocol} trace the improvement of
@@ -537,6 +548,7 @@ item at a time will catch.
   \caption{Cross-asset replication. Each point is one asset at one horizon;
   positive would favour regime conditioning. 58 of 60 cells are negative.}
   \label{fig:multiasset}
+  \Description{Left, a dot plot of RMSE improvement for twenty assets at three horizons, with almost all points left of the zero line. Right, box plots of the same distributions by horizon, all centred below zero.}
 \end{figure}
 
 A single-asset null is weak evidence, and SPY is the least favourable case one
@@ -567,6 +579,7 @@ more volatile or less well-behaved assets.
   gate, in percentage points of RMSE, one point per asset-horizon pair; bars are
   means. The benefit is small, positive on average, and grows with horizon.}
   \label{fig:gateshuffle}
+  \Description{Strip plot of the paired benefit of correct regime timing over a time-shuffled gate, by horizon, with means marked. The means are small and positive and grow with horizon.}
 \end{figure}
 
 The cross-section is large enough to measure what the single-asset ablation
@@ -595,6 +608,7 @@ and whether the gating mechanism is what stands in the way.
   different comparison---gated versus gated-with-shuffled-gate---and is not a
   component of the total.}
   \label{fig:decomposition}
+  \Description{Bar chart decomposing the regime model's loss into the cost of the regime signal and the additional cost of gating, which sum to the total, with the value of correct timing drawn separately to its right.}
 \end{figure}
 
 If the binding constraint were the partition, then using the regime posteriors
@@ -642,6 +656,7 @@ available baseline.
   the inferred state. Only the right panel separates the worlds that contain
   regimes from those that do not.}
   \label{fig:simulation}
+  \Description{Left, paired bars of excess persistence with standard and de-overlapped emissions across five simulated worlds and real data; the second bar is near zero for the worlds without dynamics. Right, forecast improvement by world, positive only where regimes genuinely exist.}
 \end{figure}
 
 A null result on real data is not interpretable on its own: it could mean markets
@@ -920,6 +935,7 @@ at all horizons, the null is a measurement rather than an absence of one.
   Every seed is negative, but the spread is wide enough that a single run could
   report anything within it.}
   \label{fig:seeds}
+  \Description{Box plot with overlaid points of the improvement over pooled ridge across ten HMM initialisations at three horizons. Every point lies below the zero line.}
 \end{figure}
 
 Baum--Welch maximizes a non-convex likelihood. Table~\ref{tab:seed} and
@@ -948,6 +964,7 @@ matter of course.
   volatility. The high-volatility state aligns with 2011, 2015--16, 2018, 2020
   and 2022.}
   \label{fig:regimes}
+  \Description{Two stacked time-series panels for SPY from 2011 to 2026, cumulative log return above and trailing realized volatility below, shaded by inferred regime. The high-volatility shading coincides with the 2011, 2018, 2020 and 2022 volatility spikes.}
 \end{figure}
 
 \input{tables/regime_characterization}

@@ -244,11 +244,15 @@ uv run python -m src.experiments.make_paper_tables
 uv run python -m src.experiments.make_multi_asset_outputs
 ```
 
-Build the paper:
+Build the paper (regenerates tables, then runs the full LaTeX cycle):
 
 ```bash
-cd paper && pdflatex main.tex && bibtex main && pdflatex main.tex && pdflatex main.tex
+uv run python -m src.experiments.fit_tables && bash paper/build.sh
 ```
+
+Needs a TeX distribution. On this machine MiKTeX installs to
+`%LOCALAPPDATA%\Programs\MiKTeX\miktexind`, which is not on `PATH`;
+`build.sh` adds it if `pdflatex` is not already resolvable.
 
 Tests:
 

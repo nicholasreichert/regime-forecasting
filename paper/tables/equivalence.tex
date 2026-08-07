@@ -2,6 +2,7 @@
 \caption{Equivalence bounds. For each asset-horizon pair we form a 95\% confidence interval on the regime model's RMSE improvement over the pooled ridge and report the upper limit, i.e.\ the largest improvement the data cannot exclude. A negative bound means \emph{no} improvement of any size is consistent with the data at 95\%. This is the statement a null result requires: failing to reject equal accuracy is also what an underpowered test produces.}
 \label{tab:equivalence}
 \small
+\fitwidth{%
 \begin{tabular}{llrrr}
 \toprule
 Variant & Horizon & Median bound & Worst case & Bound $<0$ \\
@@ -18,5 +19,6 @@ Regime gating, shrunk to pooled & $h=1$ & +0.13\% & +0.94\% & 6/20 \\
  & $h=5$ & +0.46\% & +6.52\% & 7/20 \\
  & $h=20$ & +0.50\% & +6.94\% & 5/20 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
