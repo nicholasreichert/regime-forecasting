@@ -8,8 +8,8 @@
 
 \begin{document}
 
-\title{Does Regime Detection Help Volatility Forecasting?\\
-A Causal Re-Evaluation and a Protocol Ablation}
+\title{What Do Hidden Markov Models Learn From Financial Returns?\\
+Regime Detection, Redundancy, and Why Conditioning Does Not Help}
 
 \author{Nicholas Reichert}
 \affiliation{%
@@ -53,6 +53,21 @@ all volatility spikes, a $3.6\times$ lift---but it is also recoverable with
 $95.7\%$ accuracy from the three HAR components alone, against a $46.2\%$ base
 rate. It is a noisy, three-level, annually-refitted re-encoding of a quantity
 every model already reads continuously and without estimation error.
+
+A simulation study on data whose answer we know shows the problem is not our
+implementation, and locates it in the estimator. Regime conditioning helps where
+regimes genuinely exist, so the pipeline works; real returns behave like a
+GARCH process with no discrete states at all. Two diagnostics that applied work
+routinely reports turn out not to identify regimes: state separation is as large
+in a world with no regimes as in one with them, and the reported persistence of
+the transition matrix is mostly an artefact of including an overlapping
+rolling-volatility feature in the emission vector---fitted to i.i.d.\ noise, the
+HMM reports substantial persistence that vanishes exactly when that feature is
+removed. Most strikingly, Baum--Welch identifies states by their emission
+distribution, so it finds states that differ in volatility \emph{level}---which
+trailing volatility already reveals---and largely misses states that differ in
+volatility \emph{dynamics}, which are the ones that would carry incremental
+information.
 
 Three further checks agree. Gradient-boosted experts do not rescue the method.
 Under a Model Confidence Set the regime mixture is retained in $28\%$ of
@@ -129,6 +144,16 @@ much of the original effect each methodological shortcut contributed.
   \item \textbf{A mechanism.} The inferred state is $95.7\%$ recoverable from the
     three HAR components alone. It is a lossy re-encoding of information the
     model already has, which is why no method of injecting it helps.
+
+  \item \textbf{A simulation study identifying what the estimator can and cannot
+    see.} Running the same pipeline on data whose generating process we control
+    shows that (i) the standard descriptive diagnostics do not distinguish a
+    world with regimes from one without, (ii) reported transition persistence is
+    largely manufactured by overlapping-window emissions and survives on
+    i.i.d.\ noise, and (iii) maximising emission likelihood recovers states that
+    differ in volatility level while largely missing states that differ in
+    volatility dynamics---that is, it finds the regimes least worth conditioning
+    on and misses the ones that would help.
 
   \item \textbf{Equivalence bounds.} We report what size of improvement the data
     exclude, not merely that we failed to reject. In the median asset-horizon
@@ -603,6 +628,82 @@ are using as the reference: GARCH(1,1) beats it in 39 of 60 pairs and EWMA in 33
 The regime model is therefore losing to a control that is not even the strongest
 available baseline.
 
+\subsection{What does the HMM actually learn?}
+\label{sec:simulation}
+
+\input{tables/simulation}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/simulation.png}
+  \caption{Left: apparent regime persistence, with the standard emission vector
+  and with the 20-day rolling volatility removed. On i.i.d.\ data the first is
+  large and the second is zero. Right: forecast improvement from conditioning on
+  the inferred state. Only the right panel separates the worlds that contain
+  regimes from those that do not.}
+  \label{fig:simulation}
+\end{figure}
+
+A null result on real data is not interpretable on its own: it could mean markets
+have no regimes, or that our pipeline cannot find regimes that are there. We
+settle this by running the identical pipeline on synthetic data from worlds whose
+answer we know---two with genuine Markov switching, one with persistent
+continuous volatility and no discrete states, and two with no dynamics at all.
+The processes are calibrated to SPY's unconditional volatility, excess kurtosis
+and absolute-return autocorrelation, and the GARCH world uses Student-$t$
+innovations so that it is a fair stand-in for real returns rather than one
+distinguishable on tail thickness.
+
+Table~\ref{tab:simulation} contains three findings.
+
+\paragraph{The usual descriptive diagnostics do not identify regimes.}
+State separation is $3.00$ in the GARCH world, which contains no discrete states
+whatsoever, against $3.15$ for genuine two-state switching. A reader shown only
+the fitted means, the transition matrix and a shading plot could not tell the two
+apart---and both look like the real data.
+
+\paragraph{Reported persistence is largely an artefact of the emission vector.}
+This is the sharpest result. Fitted to i.i.d.\ Gaussian returns---no volatility
+clustering, no regimes, nothing---the HMM reports excess persistence of $+0.25$,
+i.e.\ a self-transition probability roughly double the stationary probability.
+Remove the 20-day rolling volatility from the emission vector and it falls to
+$-0.003$, exactly the zero it should be. Consecutive values of
+$\mathrm{RV}^{(20)}$ share 19 of their 20 observations, so the filter is reading
+back autocorrelation the feature construction handed it. The effect is not small
+relative to the real signal: of SPY's apparent $+0.339$, only $+0.118$ survives
+the removal, and of the GARCH world's $+0.392$, only $+0.105$ does. Since
+``the inferred regimes are highly persistent'' is among the most commonly
+reported diagnostics in this literature, we would encourage reporting it in the
+ablated form.
+
+\paragraph{Only forecasting discriminates, and it places real data with GARCH.}
+Regime conditioning helps in the world where regimes genuinely exist and differ
+in level ($+0.31\%$ and $+0.59\%$ at $h=1,5$, both significant across 12
+replications), and hurts in every world where they do not. Real SPY sits with
+GARCH, not with Markov switching. Our pipeline is therefore capable of detecting
+regimes when they are present---the positive control works---which is what
+licenses reading the empirical null as a statement about markets rather than
+about our implementation.
+
+\paragraph{An unexpected asymmetry.} We designed the ``differing dynamics'' world
+to be the \emph{strongest} case for a regime-conditioned mixture: its two states
+share a similar volatility level but differ in how fast volatility mean-reverts,
+so per-regime experts have genuinely different coefficients to learn. Regime
+conditioning fails there ($-0.44\%$ at $h=5$), and the state-recovery column
+explains why: the adjusted Rand index against the true path is $0.13$, against
+$0.33$ in the world where states differ in level.
+
+This is a statement about the estimator rather than about our setup.
+Baum--Welch maximises the likelihood of the \emph{emissions}. It therefore
+identifies states that differ in their emission distribution, and is close to
+blind to states that differ only in how the process evolves. But a state that
+differs in level is one that trailing realized volatility already reveals, while
+a state that differs in dynamics is exactly the one that would carry incremental
+information. The estimator is best at finding the regimes that are least worth
+conditioning on, and worst at finding the ones that would help---not because it
+is badly implemented, but because its objective and the forecasting objective are
+different.
+
 \subsection{Nonlinear experts}
 \label{sec:nonlinear}
 
@@ -848,6 +949,14 @@ would encourage as standard for regime-switching forecasting work:
     model already has. Regress the inferred state on your existing volatility
     features: ours was $95.7\%$ recoverable, and nothing downstream could fix
     that.
+  \item \textbf{Report persistence with overlapping-window emissions removed.}
+    An HMM fitted to i.i.d.\ noise reports substantial regime persistence if its
+    emission vector contains a rolling statistic. Refit without it and report
+    both numbers.
+  \item \textbf{Validate on a simulated world with known regimes.} If
+    conditioning does not help where regimes provably exist, the architecture is
+    at fault and no amount of real data will reveal it. If it does help there and
+    not on real data, that is evidence about markets rather than about code.
   \item \textbf{Test the signal without the mechanism.} Before concluding that
     gating is what fails, feed the posteriors in as plain features. The two
     diagnoses imply different remedies.

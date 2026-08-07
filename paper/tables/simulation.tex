@@ -1,0 +1,20 @@
+\begin{table*}[t]
+\caption{What the HMM learns from each world. All rows use the identical pipeline. ``Separation'' is the ratio of the highest to the lowest state's mean realized volatility; ``excess persistence'' is the average self-transition probability minus the stationary probability, so zero means states are temporally independent. Persistence is reported with the standard emission vector and again with the 20-day rolling volatility removed; on data with no dynamics at all the first is large and the second is zero, so most of what the usual diagnostic reports is autocorrelation contributed by an overlapping-window feature. ``State recovery'' is the adjusted Rand index against the true latent path where one exists. The final columns are the out-of-sample RMSE improvement from conditioning on the inferred state. Separation and persistence do not distinguish the worlds containing regimes from those that do not; forecasting does.}
+\label{tab:simulation}
+\small
+\begin{tabular}{lccccrrrr}
+\toprule
+& True & & \multicolumn{2}{c}{Excess persistence} & State & \multicolumn{3}{c}{Forecast improvement} \\
+\cmidrule(lr){4-5}\cmidrule(lr){7-9}
+Data-generating process & regimes? & Separation & std.\ & no RV$_{20}$ & recovery & $h{=}1$ & $h{=}5$ & $h{=}20$ \\
+\midrule
+Markov switching (differing dynamics) & \checkmark & 2.80 & +0.406 & +0.139 & 0.13 & -0.07\% & -0.44\% & -1.10\% \\
+Markov switching (differing level) & \checkmark & 3.15 & +0.378 & +0.209 & 0.33 & +0.31\% & +0.59\% & +0.09\% \\
+GARCH(1,1)-$t$ & $\times$ & 3.00 & +0.392 & +0.105 & -- & -0.75\% & -1.79\% & -2.29\% \\
+i.i.d.\ Student-$t$ & $\times$ & 1.60 & +0.261 & +0.002 & -- & -0.09\% & -0.22\% & -0.42\% \\
+i.i.d.\ Gaussian & $\times$ & 1.28 & +0.253 & -0.003 & -- & -0.09\% & -0.17\% & -0.59\% \\
+\midrule
+\textbf{SPY (real data)} & -- & 2.51 & +0.339 & +0.118 & -- & -3.69\% & -4.37\% & -3.45\% \\
+\bottomrule
+\end{tabular}
+\end{table*}

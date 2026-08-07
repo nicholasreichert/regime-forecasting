@@ -1,4 +1,4 @@
-# Regime-Aware Volatility Forecasting: A Causal Re-Evaluation
+# What Do Hidden Markov Models Learn From Financial Returns?
 
 Do HMM-inferred market regimes actually improve volatility forecasting?
 
@@ -98,6 +98,38 @@ a significant positive answer gets manufactured by four evaluation shortcuts.
    aligns with 2011, 2018, 2020 and 2022 without any lookahead. They are
    interpretable — just not *incrementally* useful for point forecasting.
 
+10. **A simulation study says the problem is the estimator, not our code.**
+    Running the same pipeline on data whose generating process we control:
+
+    | World | True regimes? | Separation | Persistence (std) | Persistence (no RV₂₀) | Forecast gain h=5 |
+    |---|---|---|---|---|---|
+    | Markov switching (dynamics) | yes | 2.80 | +0.406 | +0.139 | −0.44% |
+    | Markov switching (level) | yes | 3.15 | +0.378 | +0.209 | **+0.59%** |
+    | GARCH(1,1)-*t* | **no** | 3.00 | +0.392 | +0.105 | −1.79% |
+    | iid Student-*t* | **no** | 1.60 | +0.261 | +0.002 | −0.22% |
+    | iid Gaussian | **no** | 1.28 | +0.253 | **−0.003** | −0.17% |
+    | **SPY (real)** | ? | 2.51 | +0.339 | +0.118 | −4.37% |
+
+    Three things fall out:
+
+    * **Separation doesn't identify regimes.** GARCH — which has *no* discrete
+      states — scores 3.00, essentially the same as genuine Markov switching.
+    * **Reported persistence is mostly a feature artefact.** Fit the HMM to
+      *iid Gaussian noise* and it reports excess persistence of +0.25. Drop the
+      20-day rolling volatility from the emission vector and it falls to −0.003.
+      Consecutive RV₂₀ values share 19 of 20 observations — the filter is reading
+      back autocorrelation it was handed. Of SPY's +0.339, only +0.118 survives.
+    * **Baum–Welch finds the wrong regimes.** It identifies states by their
+      *emission distribution*, so it recovers states differing in volatility
+      **level** (ARI 0.33) — which trailing volatility already tells you — and
+      largely misses states differing in volatility **dynamics** (ARI 0.13),
+      which are the ones that would actually carry new information.
+
+    The positive control works: regime conditioning helps where regimes genuinely
+    exist. Real markets sit with GARCH, not with Markov switching.
+
+    ![Simulation study](paper/figures/simulation.png)
+
 ![Regime shading](paper/figures/regime_shading.png)
 
 ---
@@ -162,6 +194,10 @@ uv run python -m src.experiments.multi_asset
 
 ```bash
 uv run python -m src.experiments.economic_and_mcs
+```
+
+```bash
+uv run python -m src.experiments.simulation_study
 ```
 
 Then regenerate every table and figure in the paper from those artifacts:

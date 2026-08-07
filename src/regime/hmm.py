@@ -18,12 +18,21 @@ class HMMResult:
     test_probs: np.ndarray   # filtered, shape (n_test, K)
 
 
-def _build_hmm_observations(df: pd.DataFrame) -> pd.DataFrame:
-    # low dimensional emission observational vector
+def _build_hmm_observations(df: pd.DataFrame, include_vol: bool = True) -> pd.DataFrame:
+    """Low-dimensional emission vector.
+
+    ``include_vol`` controls whether the 20-day rolling volatility is included.
+    It is on by default because it is what the applied model uses, but it is a
+    *overlapping-window* statistic: consecutive values share 19 of 20
+    observations and are therefore strongly autocorrelated whatever the
+    underlying returns do. Being able to switch it off is what lets the
+    simulation study separate persistence that comes from the data from
+    persistence manufactured by the feature.
+    """
     obs = pd.DataFrame(index=df.index)
     obs["ret"] = df["ret_1d"].astype(float)
     obs["abs_ret"] = df["ret_1d"].abs().astype(float)
-    if "ret_vol_20" in df.columns:
+    if include_vol and "ret_vol_20" in df.columns:
         obs["vol"] = df["ret_vol_20"].astype(float)
     return obs.dropna()
 
@@ -137,15 +146,19 @@ def fit_hmm_and_infer_probs(
     tol: float = 1e-4,
     min_covar: float = 1e-3,
     seed: int = 42,
+    include_vol: bool = True,
 ) -> HMMResult:
     """
     Fit HMM on train observations only.
     Then compute STRICT ONLINE filtered probabilities for:
       - train (p(z_t | x_{1:t}) on train)
       - test  (p(z_t | x_{1:t}) on test, warm-started from last train belief)
+
+    ``include_vol`` drops the rolling-volatility emission; see
+    :func:`_build_hmm_observations`. Used only by the simulation study.
     """
-    train_obs_df = _build_hmm_observations(train_df)
-    test_obs_df = _build_hmm_observations(test_df)
+    train_obs_df = _build_hmm_observations(train_df, include_vol=include_vol)
+    test_obs_df = _build_hmm_observations(test_df, include_vol=include_vol)
 
     train_obs = train_obs_df.to_numpy()
     test_obs = test_obs_df.to_numpy()
