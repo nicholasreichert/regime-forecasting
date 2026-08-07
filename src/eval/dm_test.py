@@ -190,6 +190,13 @@ def equivalence_bound(
     dbar = float(d.mean())
     lag = max(int(horizon) - 1, 0)
     lrv = _newey_west_var(d, lag)
+
+    # Two models can be exactly identical -- ``regime_single`` reproduces the
+    # pooled ridge bitwise, for instance -- giving a loss differential that is
+    # zero at every observation. That is perfect equivalence, not missing
+    # information, so the interval collapses to a point at zero rather than NaN.
+    if not np.any(d != 0.0):
+        return EquivalenceBound(0.0, 0.0, 0.0, n, conf)
     if lrv <= 0:
         return EquivalenceBound(np.nan, np.nan, np.nan, n, conf)
 

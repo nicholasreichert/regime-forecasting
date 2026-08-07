@@ -393,6 +393,88 @@ def collect_oos_regime_nested(
 SHRINKAGE_GRID: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 0.9, 1.0)
 
 
+def gbm_factory(seed: int = 0):
+    """Gradient-boosted expert, for testing whether the null needs linearity.
+
+    Deliberately modest capacity: with per-regime fitting the smallest expert
+    sees a few hundred rows, and a deep model there would be testing overfitting
+    rather than nonlinearity.
+    """
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    def make():
+        return HistGradientBoostingRegressor(
+            max_iter=200,
+            learning_rate=0.05,
+            max_depth=3,
+            min_samples_leaf=40,
+            l2_regularization=1.0,
+            early_stopping=True,
+            n_iter_no_change=20,
+            validation_fraction=0.15,
+            random_state=seed,
+        )
+
+    return make
+
+
+def collect_oos_nonlinear(
+    df: pd.DataFrame,
+    features: Sequence[str],
+    target: str,
+    ev: EvalSpec,
+    K: int,
+    cache: HMMCache,
+    gated: bool,
+    mode: str = "soft",
+    min_points_per_regime: int = 200,
+    seed: int = 0,
+) -> OOSResult:
+    """Gradient-boosted experts, pooled or regime-gated.
+
+    K is held fixed rather than selected, since the question here is only whether
+    the linear-expert restriction drives the result; the ridge arms carry the
+    nested-selection machinery.
+    """
+    y_true_parts: List[pd.Series] = []
+    y_pred_parts: List[pd.Series] = []
+    boundaries: List[pd.Timestamp] = []
+    factory = gbm_factory(seed)
+
+    for split in _splits(df, ev):
+        train = df.loc[split.train_idx]
+        test = df.loc[split.test_idx]
+        hres = cache.get(train, test, K, seed)
+
+        n_tr = min(len(train), hres.train_probs.shape[0])
+        n_te = min(len(test), hres.test_probs.shape[0])
+        Xtr = train[list(features)].iloc[-n_tr:]
+        ytr = train[target].iloc[-n_tr:]
+        te = test.iloc[-n_te:]
+        Xte = te[list(features)]
+
+        if gated:
+            m = RegimeConditionedRidge(
+                mode=mode, min_points_per_regime=min_points_per_regime, expert_factory=factory
+            )
+            m.fit(Xtr, ytr, hres.train_probs[-n_tr:])
+            pred = m.predict(Xte, hres.test_probs[-n_te:])
+        else:
+            m = factory()
+            m.fit(Xtr, ytr)
+            pred = m.predict(Xte)
+
+        y_true_parts.append(te[target].astype(float))
+        y_pred_parts.append(pd.Series(np.asarray(pred, dtype=float), index=te.index))
+        boundaries.append(split.test_start)
+
+    return OOSResult(
+        y_true=pd.concat(y_true_parts).sort_index(),
+        y_pred=pd.concat(y_pred_parts).sort_index(),
+        fold_boundaries=boundaries,
+    )
+
+
 def collect_oos_regime_variant(
     df: pd.DataFrame,
     features: Sequence[str],

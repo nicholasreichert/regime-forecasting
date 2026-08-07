@@ -41,6 +41,7 @@ from src.eval.oos import (  # noqa: E402
     EvalSpec,
     HMMCache,
     collect_oos_baseline,
+    collect_oos_nonlinear,
     collect_oos_regime_nested,
     collect_oos_regime_variant,
     compute_metrics,
@@ -152,6 +153,17 @@ def run_asset(ticker: str) -> List[dict]:
                 rows.append({"ticker": ticker, "horizon": h, "model": f"regime_{arm}",
                              "error": f"{type(e).__name__}: {e}"})
 
+        # Nonlinear experts: does the null survive dropping linearity?
+        for nm, gated in (("gbm_pooled", False), ("gbm_gated", True)):
+            try:
+                preds[nm] = collect_oos_nonlinear(
+                    df=data, features=features, target=target, ev=ev,
+                    K=3, cache=cache, gated=gated, seed=cfg.project.seed,
+                )
+            except Exception as e:
+                rows.append({"ticker": ticker, "horizon": h, "model": nm,
+                             "error": f"{type(e).__name__}: {e}"})
+
         # The two ways of using the regime signal that avoid gating entirely.
         for variant in ("features", "shrunk"):
             try:
@@ -169,6 +181,11 @@ def run_asset(ticker: str) -> List[dict]:
 
         ref = preds["regime_single"]  # the pooled-ridge control
         ref_rmse = float(np.sqrt(np.mean((ref.y_true - ref.y_pred) ** 2)))
+
+        pdir = Path("artifacts") / "study" / "multi_asset" / "predictions" / ticker / f"h{h}"
+        pdir.mkdir(parents=True, exist_ok=True)
+        for name, res in preds.items():
+            pd.DataFrame({"y_true": res.y_true, "y_pred": res.y_pred}).to_csv(pdir / f"{name}.csv")
 
         for name, res in preds.items():
             m = compute_metrics(res, data)

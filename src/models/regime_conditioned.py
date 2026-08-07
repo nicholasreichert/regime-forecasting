@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Sequence
+from typing import Callable, Dict, List, Literal, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -48,9 +48,18 @@ class RegimeConditionedRidge:
     min_points_per_regime: int = 200
     alphas: tuple[float, ...] = field(default=DEFAULT_ALPHAS)
     standardize: bool = True
+    # Swap in a different expert family (e.g. gradient boosting) to test whether
+    # the result is an artefact of linear experts. Each call must return a fresh
+    # unfitted estimator with the usual fit/predict interface.
+    expert_factory: Optional[Callable[[], object]] = None
+
+    def _new_expert(self):
+        if self.expert_factory is not None:
+            return self.expert_factory()
+        return _make_ridge(self.alpha, self.alphas, self.standardize)
 
     def __post_init__(self):
-        self.global_model = _make_ridge(self.alpha, self.alphas, self.standardize)
+        self.global_model = self._new_expert()
         self.models: Dict[int, Pipeline] = {}
         self.regimes_trained: List[int] = []
 
@@ -62,7 +71,7 @@ class RegimeConditionedRidge:
         hard = train_probs.argmax(axis=1)
 
         # global fallback expert, fitted on the pooled training window
-        self.global_model = _make_ridge(self.alpha, self.alphas, self.standardize)
+        self.global_model = self._new_expert()
         self.global_model.fit(X, y)
 
         self.models = {}
@@ -72,7 +81,7 @@ class RegimeConditionedRidge:
             idx = np.where(hard == k)[0]
             if len(idx) < self.min_points_per_regime:
                 continue
-            m = _make_ridge(self.alpha, self.alphas, self.standardize)
+            m = self._new_expert()
             m.fit(X.iloc[idx], y.iloc[idx])
             self.models[k] = m
             self.regimes_trained.append(k)

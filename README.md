@@ -52,7 +52,24 @@ a significant positive answer gets manufactured by four evaluation shortcuts.
    what size of improvement the data exclude. In the median asset-horizon pair,
    *no* improvement of any size is consistent with the evidence at 95%.
 
-6. **Four protocol shortcuts manufacture a significant positive result.**
+6. **It survives three more axes.** Gradient-boosted experts don't rescue it
+   (6% worse than ridge, 0/60 wins). Under a **Model Confidence Set** the regime
+   mixture is retained in 28% of pairs vs **78% for GARCH(1,1)**. Under a
+   decision loss — volatility targeting — regime models are *indistinguishable*
+   from the pooled ridge rather than behind it (the one place the loss function
+   matters), but GARCH and HAR are significantly ahead of both.
+
+   | Model | In MCS (MSE) | In MCS (QLIKE) |
+   |---|---|---|
+   | GARCH(1,1) | **78%** | **88%** |
+   | EWMA | 77% | 85% |
+   | Ridge (pooled) | 75% | 67% |
+   | Regime gating, shrunk | 60% | 72% |
+   | Regime as features | 40% | 55% |
+   | Regime gating | 28% | 42% |
+   | Regime gating, GBM experts | 15% | 35% |
+
+7. **Four protocol shortcuts manufacture a significant positive result.**
    Starting from an aliased multi-horizon target, an unstandardized
    fixed-penalty baseline, no train/test embargo, and hyperparameters selected on
    the test score, the regime model shows a significant improvement. Removing
@@ -70,14 +87,14 @@ a significant positive answer gets manufactured by four evaluation shortcuts.
    (Improvement of the regime model over its *matched* pooled-ridge baseline.
    At h=1 the aliased and realized-volatility targets coincide, so P3 = P4.)
 
-7. **Seed-to-seed variation rivals the effect size.** Across 10 HMM
+8. **Seed-to-seed variation rivals the effect size.** Across 10 HMM
    initializations the improvement over pooled ridge ranges from −3.7% to −0.2%
    at h=1, −6.7% to −1.9% at h=5, and −5.2% to −2.4% at h=20 — spreads of 3–5
    percentage points, comparable to the differences being tested. The selected
    number of regimes is seed-dependent too. Every seed is negative, so the
    conclusion holds, but no single run measures the magnitude.
 
-8. **The regimes themselves are real.** The filtered high-volatility state
+9. **The regimes themselves are real.** The filtered high-volatility state
    aligns with 2011, 2018, 2020 and 2022 without any lookahead. They are
    interpretable — just not *incrementally* useful for point forecasting.
 
@@ -141,6 +158,10 @@ uv run python -m src.experiments.seed_robustness
 
 ```bash
 uv run python -m src.experiments.multi_asset
+```
+
+```bash
+uv run python -m src.experiments.economic_and_mcs
 ```
 
 Then regenerate every table and figure in the paper from those artifacts:
