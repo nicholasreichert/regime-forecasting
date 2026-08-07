@@ -82,6 +82,65 @@ def mae(y_true, y_pred) -> float:
     return float(np.mean(np.abs(y_true_arr - y_pred_arr)))
 
 
+def qlike(y_true, y_pred, floor_q: float = 0.01) -> float:
+    """Mean QLIKE loss between volatility forecasts (Patton, 2011).
+
+    Both inputs are volatilities; the loss is evaluated on the implied
+    variances:
+
+        QLIKE = v_true / v_pred - log(v_true / v_pred) - 1
+
+    QLIKE is one of the two loss families (with MSE) that stay robust when the
+    volatility target is a noisy proxy for latent volatility, so a ranking under
+    QLIKE cannot be an artefact of proxy noise. Unlike MSE it penalises
+    under-prediction far more heavily than over-prediction, which is the
+    relevant asymmetry for risk applications.
+
+    QLIKE is unbounded as the forecast approaches zero, so a forecast of exactly
+    zero has infinite loss. That is the economically correct verdict but it makes
+    the statistic useless for ranking, and at h=1 the proxy |r_{t+1}| is itself
+    zero often enough to matter.
+
+    Both the realization and the forecast are therefore floored at the
+    ``floor_q`` quantile of the realized target. Flooring *both* sides keeps the
+    loss exactly zero for a perfect forecast, which a one-sided floor does not;
+    it amounts to evaluating on a scale where volatilities below the 1st
+    percentile are treated as indistinguishable. The floor is applied for
+    reporting only and never touches model fitting or selection.
+    """
+    losses, _ = qlike_losses(y_true, y_pred, floor_q=floor_q)
+    if losses.size == 0:
+        return float("nan")
+    return float(np.mean(losses))
+
+
+def qlike_losses(y_true, y_pred, floor_q: float = 0.01):
+    """Per-observation QLIKE losses and the mask of observations kept.
+
+    Shared with the Diebold-Mariano tests so that a significance test on QLIKE
+    is testing the same quantity the results table reports. Keeping two
+    independently-floored implementations made the h=1 tests degenerate: with a
+    near-zero floor the loss differential is dominated by a handful of
+    observations where the realization is essentially zero, and every comparison
+    returns the same p-value regardless of the models involved.
+    """
+    y_true_arr, y_pred_arr = _validate_y_true_y_pred(y_true, y_pred)
+
+    ok = np.isfinite(y_true_arr) & np.isfinite(y_pred_arr) & (y_true_arr > 0)
+    if ok.sum() == 0:
+        return np.empty(0, dtype=float), ok
+
+    floor = float(np.quantile(y_true_arr[ok], floor_q))
+    if not np.isfinite(floor) or floor <= 0:
+        floor = 1e-8
+
+    v_true = np.maximum(y_true_arr[ok], floor) ** 2
+    v_pred = np.maximum(y_pred_arr[ok], floor) ** 2
+
+    ratio = v_true / v_pred
+    return ratio - np.log(ratio) - 1.0, ok
+
+
 def directional_accuracy(y_true, y_pred) -> float:
     """Share of observations where ``y_true`` and ``y_pred`` have same sign.
 

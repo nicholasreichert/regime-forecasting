@@ -1,0 +1,82 @@
+{
+  "run_id": "study_2026-08-07T16-32-27Z",
+  "config": {
+    "project": {
+      "name": "regime-forecasting",
+      "seed": 42
+    },
+    "data": {
+      "ticker": "SPY",
+      "start": "2005-01-01",
+      "end": null,
+      "price_field": "Adj Close"
+    },
+    "targets": {
+      "horizons": [
+        1,
+        5,
+        20
+      ],
+      "target_type": "absret"
+    },
+    "features": {
+      "return_lags": 20,
+      "rolling_windows": [
+        5,
+        10,
+        20
+      ],
+      "include_volume": true,
+      "rsi_period": 14
+    },
+    "evaluation": {
+      "method": "walk_forward",
+      "train_years": 6,
+      "test_years": 1,
+      "step_years": 1
+    },
+    "hmm": {
+      "K_values": [
+        2,
+        3,
+        4
+      ],
+      "covariance_type": "diag",
+      "n_iter": 400,
+      "tol": 0.0001,
+      "min_covar": "1e-3"
+    }
+  },
+  "n_rows": 5391,
+  "date_range": [
+    "2005-02-03",
+    "2026-07-10"
+  ],
+  "ablations": [
+    {
+      "name": "normal",
+      "train": "true",
+      "test": "true"
+    },
+    {
+      "name": "gate_shuffle",
+      "train": "true",
+      "test": "shuffle"
+    },
+    {
+      "name": "expert_shuffle",
+      "train": "shuffle",
+      "test": "true"
+    },
+    {
+      "name": "both_shuffle",
+      "train": "shuffle",
+      "test": "shuffle"
+    },
+    {
+      "name": "single",
+      "train": "single",
+      "test": "single"
+    }
+  ]
+}

@@ -101,6 +101,33 @@ def forward_filter_probs(
     return probs, probs[-1].copy()
 
 
+def canonical_state_order(hmm: GaussianHMM, vol_dim: int) -> np.ndarray:
+    """Permutation that sorts HMM states by ascending mean of ``vol_dim``.
+
+    Baum-Welch state indices are arbitrary: nothing ties "state 0" in one fit to
+    "state 0" in the next. Because the HMM here is refit on every walk-forward
+    window, concatenating raw state labels across folds silently interleaves
+    different meanings, which corrupts every per-regime table and makes regime
+    shading plots show spurious relabelling events at fold boundaries.
+
+    Sorting states by their volatility emission gives a stable, interpretable
+    convention (state 0 = calmest, state K-1 = most volatile) that is comparable
+    across folds. This is a relabelling only: it leaves the likelihood, the
+    filtered posteriors, and therefore every forecast, unchanged.
+    """
+    return np.argsort(hmm.means_[:, vol_dim])
+
+
+def _apply_state_permutation(hmm: GaussianHMM, order: np.ndarray) -> None:
+    """Relabel a fitted HMM in place according to ``order``."""
+    hmm.startprob_ = hmm.startprob_[order]
+    hmm.transmat_ = hmm.transmat_[np.ix_(order, order)]
+    hmm.means_ = hmm.means_[order]
+    covars = hmm._covars_ if hasattr(hmm, "_covars_") else None
+    if covars is not None:
+        hmm._covars_ = covars[order]
+
+
 def fit_hmm_and_infer_probs(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -138,6 +165,11 @@ def fit_hmm_and_infer_probs(
         params="stmc",
     )
     hmm.fit(train_obs_z)
+
+    # Relabel states into a canonical low->high volatility order so that state
+    # identities are comparable across walk-forward folds.
+    vol_dim = train_obs_df.columns.get_loc("vol") if "vol" in train_obs_df.columns else 1
+    _apply_state_permutation(hmm, canonical_state_order(hmm, int(vol_dim)))
 
     # Build log emission probabilities from fitted params
     if hmm.covariance_type != "diag":

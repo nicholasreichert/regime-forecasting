@@ -1,0 +1,629 @@
+\documentclass[sigconf,nonacm]{acmart}
+
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{multirow}
+
+\begin{document}
+
+\title{Does Regime Detection Help Volatility Forecasting?\\
+A Causal Re-Evaluation and a Protocol Ablation}
+
+\author{Nicholas Reichert}
+\affiliation{%
+  \institution{Northeastern University}
+  \city{Boston}
+  \state{Massachusetts}
+  \country{USA}}
+\email{reichert.n@northeastern.edu}
+
+\begin{abstract}
+Hidden Markov models are a standard tool for detecting latent market regimes,
+and conditioning a forecaster on the inferred regime is widely reported to
+improve prediction, particularly under stress. We re-examine that claim for
+equity volatility forecasting under a deliberately conservative protocol:
+regimes are inferred by strict online filtering with no lookahead, the
+train/test boundary is purged by the forecast horizon, the number of regimes and
+the gating rule are selected on an inner validation block rather than on the
+test data, and the regime model is compared against properly specified
+volatility benchmarks (HAR, GARCH(1,1), EWMA) rather than against a naive mean.
+
+Under this protocol, regime conditioning does not improve volatility forecasts
+for SPY over 2005--2026. A pooled ridge regression on the same features beats
+the regime-conditioned mixture at every horizon, and the regime model is never
+significantly better than HAR, GARCH(1,1) or EWMA under either squared-error or
+QLIKE loss. The only benchmarks it significantly beats are trivial ones. Two
+diagnostics explain why. First, an ablation that time-shuffles the regime
+probabilities---preserving their marginal distribution but destroying their
+alignment with the market---performs \emph{no worse}, and at $h{=}1$ and $h{=}5$
+slightly better, than the correctly aligned model: the timing of the inferred
+regime carries essentially no exploitable signal beyond the volatility level
+that is already in the feature set. Second, the spread induced purely by the
+HMM's random initialization is of the same order as the effect being measured,
+so any single-seed comparison is uninformative.
+
+We then quantify how a positive result can be manufactured. Starting from a
+protocol that combines four individually plausible choices---a multi-horizon
+target that is really a single-day target at longer lead, an unstandardized
+fixed-penalty baseline, no train/test embargo, and selection of the regime
+hyperparameters on the test score---the regime model shows a statistically
+significant improvement over its baseline. Removing the four choices one at a
+time drives that improvement to zero and then negative; correcting the baseline
+alone is enough to flip the sign. We release the full pipeline and propose a
+short checklist for evaluating regime-switching forecasters.
+\end{abstract}
+
+\keywords{volatility forecasting, regime switching, hidden Markov models,
+evaluation protocol, data leakage, reproducibility}
+
+\maketitle
+
+%======================================================================
+\section{Introduction}
+%======================================================================
+
+Financial time series are not stationary. Volatility clusters, correlations
+change sign in crises, and the relationship between predictors and returns
+appears to shift over time. This motivates \emph{regime-switching} models, in
+which a latent discrete state governs the data-generating process
+\cite{hamilton1989, ang2012regime}. The natural machine-learning instantiation
+is a two-stage pipeline: infer a latent state with a hidden Markov model
+\cite{rabiner1989}, then condition a predictor on that state, either by hard
+switching between per-regime experts or by soft probability weighting.
+
+The appeal is obvious and the reported results are usually positive, and the
+broader turn toward machine learning in asset pricing \cite{gu2020empirical} has
+made such two-stage pipelines easy to assemble. Our starting point was the same:
+an implementation of exactly this pipeline that, on its first evaluation, showed
+a clear improvement over a ridge-regression baseline in forecasting SPY
+volatility. This paper is a report of what happened when we tried to make that
+result robust.
+
+The improvement did not survive. It disappeared once the linear baseline was
+given the same care as the proposed model, and it reversed once the target,
+the train/test boundary, and the model-selection step were corrected. What
+remains is a negative result, but a decomposable one: we can say precisely how
+much of the original effect each methodological shortcut contributed.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item \textbf{A causal evaluation.} We evaluate HMM regime-conditioned
+    volatility forecasting under strict online filtering, an embargoed
+    walk-forward split, nested hyperparameter selection, and a benchmark set
+    that includes HAR \cite{corsi2009}, GARCH(1,1) \cite{bollerslev1986}, and
+    EWMA \cite{riskmetrics1996}. Regime conditioning provides no significant
+    gain at any horizon under either MSE or QLIKE \cite{patton2011}.
+
+  \item \textbf{A factorized ablation of the regime signal.} We separate the
+    value of \emph{regime-specialized experts} from the value of \emph{knowing
+    the current regime}, by perturbing the training partition and the
+    prediction-time gate independently. Destroying the temporal alignment of
+    the gate costs nothing, which localizes the failure: the inferred state
+    sequence adds no information beyond the trailing volatility already
+    available as a feature.
+
+  \item \textbf{A protocol ablation.} We quantify how much apparent improvement
+    is produced by each of four common evaluation shortcuts, and show that they
+    compound: together they turn a $-1\%$ result into a statistically
+    significant $+2\%$ one.
+
+  \item \textbf{Seed sensitivity.} We show that the spread across HMM random
+    initializations alone is comparable to the reported effect size, which we
+    believe is under-appreciated in applied regime-switching work.
+
+  \item \textbf{A reproducible pipeline and a checklist} for future work in this
+    area.
+\end{enumerate}
+
+We stress what we do \emph{not} claim. We do not claim that market regimes do
+not exist, nor that regime-switching models are useless in general---they have
+well-documented value in asset allocation and risk management
+\cite{guidolin2007}. We claim that for this task, this asset, and this model
+class, the reported forecasting gains are an artifact of evaluation, and that
+the diagnostics we propose are cheap enough that they should be standard.
+
+%======================================================================
+\section{Related Work}
+%======================================================================
+
+\paragraph{Regime switching.}
+Hamilton's Markov-switching autoregression \cite{hamilton1989} established the
+econometric template. Subsequent work applies regime switching to asset
+allocation \cite{guidolin2007} and documents its role in explaining return
+predictability \cite{ang2012regime, timmermann2000}. Most of this literature is
+in-sample or uses smoothed (two-sided) state estimates; our concern is the
+strictly causal, out-of-sample forecasting case.
+
+\paragraph{Volatility forecasting.}
+The benchmark set matters enormously here. GARCH \cite{engle1982,
+bollerslev1986} remains hard to beat \cite{hansen2005forecast}, and the HAR
+model \cite{corsi2009} is the standard reference for realized volatility, whose
+long-memory behavior it captures with three lagged components. Andersen and
+Bollerslev \cite{andersen1998} showed that apparent poor performance of
+volatility models was largely an artifact of using squared daily returns as the
+evaluation proxy; Patton \cite{patton2011} characterized which loss functions
+remain robust to such proxy noise, motivating our use of both MSE and QLIKE.
+
+\paragraph{Evaluation and leakage.}
+Our methodological concerns are not new. L\'opez de Prado \cite{lopezdeprado2018}
+introduced purging and embargoing for financial cross-validation. Bailey et al.
+\cite{bailey2014} formalized backtest overfitting, and Harvey et al.
+\cite{harvey2016} argued for higher significance thresholds given the volume of
+tested strategies. Kaufman et al. \cite{kaufman2012leakage} give the general
+taxonomy of leakage into which our embargo and nested-selection corrections fall. Welch and Goyal \cite{welch2008} performed the canonical
+re-evaluation of equity-premium predictors and found most did not survive
+out-of-sample. Outside finance, Ferrari Dacrema et al. \cite{dacrema2019} showed
+that weak baselines account for most reported progress in neural recommendation,
+Makridakis et al. \cite{makridakis2018} made the analogous point for ML
+forecasting, and Kapoor and Narayanan \cite{kapoor2023leakage} document leakage
+as a cross-disciplinary reproducibility problem. Our contribution is to run this
+style of audit on the specific, popular case of HMM-based regime-conditioned
+forecasting, and to attribute the effect to individual protocol choices rather
+than merely reporting a null.
+
+%======================================================================
+\section{Problem Setup}
+%======================================================================
+
+\subsection{Data}
+
+We use daily SPY (S\&P 500 ETF) OHLCV data from February 2005 to July 2026,
+obtained from Yahoo Finance and adjusted for splits and dividends. Let
+$p_t$ be the adjusted close and $r_t = \log p_t - \log p_{t-1}$ the daily log
+return. After feature construction and the removal of warm-up and trailing rows
+the sample contains $5{,}391$ trading days, of which $3{,}771$ (February 2011 to
+February 2026) are used for out-of-sample evaluation.
+
+\subsection{Targets}
+
+The forecasting target is realized volatility over the next $h$ days,
+\begin{equation}
+  y_t^{(h)} \;=\; \mathrm{RV}_{t+1:t+h} \;=\; \sqrt{\frac{1}{h}\sum_{i=1}^{h} r_{t+i}^2},
+  \qquad h \in \{1, 5, 20\}.
+  \label{eq:target}
+\end{equation}
+For $h=1$ this reduces to $|r_{t+1}|$, so the family nests the single-day
+absolute-return target.
+
+This definition deserves emphasis because it is a place where an error is easy
+to make and hard to see. A superficially similar definition,
+$\tilde{y}_t^{(h)} = |r_{t+h}|$, is the absolute return of a \emph{single} day
+$h$ steps ahead. It is not a multi-horizon target at all: $\tilde{y}^{(1)}$,
+$\tilde{y}^{(5)}$ and $\tilde{y}^{(20)}$ are the same series at different lags.
+The diagnostic is immediate---their sample standard deviations are
+$0.009186$, $0.009185$ and $0.009188$, identical to four significant figures,
+whereas the aggregated targets in Eq.~\eqref{eq:target} give $0.009186$,
+$0.007508$ and $0.006837$, declining with $h$ as aggregation requires. Under the
+aliased definition, varying $h$ varies only the lead time of an unchanged and
+extremely noisy prediction problem. We report results for both; the aliased
+variant is the first stage of the protocol ablation in
+Section~\ref{sec:protocol}.
+
+\subsection{Features}
+
+All features at time $t$ use information available at $t$: lagged returns
+$r_{t-1},\dots,r_{t-20}$; rolling means and standard deviations of returns over
+$5$, $10$ and $20$ days; log volume change and rolling volume $z$-scores; and
+Wilder's RSI. We additionally include the three HAR components
+\begin{equation}
+  \mathrm{RV}^{(w)}_t = \sqrt{\tfrac{1}{w}\textstyle\sum_{i=0}^{w-1} r_{t-i}^2},
+  \qquad w \in \{1, 5, 22\},
+\end{equation}
+so that every model in the comparison, including the regime-conditioned one, has
+access to the information the HAR benchmark uses. The final feature set has 35
+columns.
+
+%======================================================================
+\section{Method}
+%======================================================================
+
+\subsection{Causal regime inference}
+
+We fit a Gaussian HMM with $K$ states and diagonal covariances on the
+three-dimensional emission vector $x_t = (r_t,\, |r_t|,\, \mathrm{RV}^{(20)}_t)$,
+standardized using training-window statistics only. Parameters
+$(\pi, A, \{\mu_k, \Sigma_k\})$ are estimated by Baum--Welch on the training
+window.
+
+The regime probability used at prediction time is the \emph{filtered} posterior
+\begin{equation}
+  \gamma_t(k) \;=\; \Pr\!\left(z_t = k \mid x_{1:t}\right),
+\end{equation}
+computed by the forward recursion in log space,
+\begin{equation}
+  \log\alpha_t(k) \;=\; \log p(x_t \mid z_t{=}k) +
+  \log\!\!\sum_{j} \exp\!\big(\log\alpha_{t-1}(j) + \log A_{jk}\big),
+\end{equation}
+normalized at each step. This is the point at which regime-switching pipelines
+most often leak. The smoothed posterior
+$\Pr(z_t = k \mid x_{1:T})$ returned by a standard
+\texttt{predict\_proba} call, and the Viterbi path returned by \texttt{predict},
+both condition on the \emph{entire} sequence including the future, and using
+either one to form a forecast at time $t$ is lookahead. We implement the forward
+filter explicitly, and the test-window filter is warm-started from the final
+training-window belief $\alpha_{T_{\text{train}}}$ rather than reset to $\pi$,
+which is what a forecaster running the model in real time would have.
+
+\subsection{Label switching across folds}
+
+Baum--Welch state indices are arbitrary: nothing ties ``state 0'' in one fit to
+``state 0'' in the next. Because the HMM is refit on every walk-forward window,
+concatenating raw state labels across folds interleaves different meanings. The
+symptom is easy to miss---the forecasts are unaffected, since within a fold the
+experts are fitted and applied consistently---but every per-regime table and
+every regime-shading plot is corrupted, showing apparent regime changes at fold
+boundaries that are pure relabelling.
+
+We therefore sort states after each fit by the mean of their volatility emission,
+so that state $0$ is always the calmest and state $K-1$ the most volatile. This
+is a relabelling only: it leaves the likelihood, the filtered posteriors, and
+every forecast unchanged, while making regime identities comparable across folds.
+
+\subsection{Regime-conditioned prediction}
+
+Given filtered probabilities, we fit one ridge expert per regime. Training rows
+are assigned to expert $k$ by $\arg\max_k \gamma_t(k)$; regimes with fewer than
+$200$ training rows fall back to a globally fitted expert. Predictions combine
+the experts either by hard switching,
+$\hat{y}_t = f_{\arg\max_k \gamma_t(k)}(x_t)$, or by soft weighting,
+$\hat{y}_t = \sum_k \gamma_t(k) f_k(x_t)$.
+
+Each expert is a standardized ridge whose penalty is chosen by generalized
+cross-validation on its own training subsample. This matters for a fair
+comparison: feature standard deviations in our set span nearly four orders of
+magnitude (from $2.3\times10^{-3}$ for a 20-day mean return to $11.4$ for RSI),
+so a fixed penalty on unscaled inputs shrinks coefficients very unevenly. A
+baseline handicapped in this way is not a baseline.
+
+\subsection{Factorized ablations}
+\label{sec:ablations}
+
+A single ``shuffle the regimes'' control conflates two distinct questions. We
+therefore perturb the training partition and the prediction-time gate
+independently, giving the five arms in Table~\ref{tab:ablation-design}.
+
+\begin{table}[t]
+\caption{Ablation design. ``true'' uses filtered probabilities; ``shuffle''
+applies a random time permutation, preserving the marginal distribution of
+regime probabilities but destroying their alignment with the market; ``single''
+puts all mass on one state.}
+\label{tab:ablation-design}
+\small
+\begin{tabular}{llll}
+\toprule
+Arm & Train gate & Test gate & Isolates \\
+\midrule
+\textsc{normal}         & true    & true    & full model \\
+\textsc{gate\_shuffle}  & true    & shuffle & value of regime \emph{timing} \\
+\textsc{expert\_shuffle}& shuffle & true    & value of regime \emph{experts} \\
+\textsc{both\_shuffle}  & shuffle & shuffle & conventional shuffle control \\
+\textsc{single}         & single  & single  & pooled ridge (control) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textsc{gate\_shuffle} is the sharpest of these. The experts are trained on
+genuine regimes, and at prediction time the model receives a probability vector
+drawn from the correct marginal distribution but attached to the wrong day. If
+knowing \emph{which regime we are in today} matters, this arm must degrade.
+
+We note one design trap we fell into ourselves. An earlier version of this
+ablation suite included a ``uniform gate'' arm intended to remove regime
+information while preserving the mixture structure. Because experts are assigned
+by $\arg\max$, a uniform probability vector selects state $0$ for every row, so
+that arm collapsed to a single globally fitted expert and returned results
+numerically identical to the pooled-ridge control. It looked like an informative
+ablation and was in fact a duplicate.
+
+%======================================================================
+\section{Evaluation Protocol}
+\label{sec:protocol-def}
+%======================================================================
+
+\paragraph{Walk-forward splits.}
+We use a rolling origin: six years of training (roughly $1{,}500$ observations)
+followed by one year of testing, advanced one year at a time, giving $15$ folds
+spanning February 2011 to February 2026. The HMM and all model parameters are
+refit on each training window.
+
+\paragraph{Embargo.}
+Because $y_t^{(h)}$ depends on returns through $t+h$, the final $h$ rows of any
+training window have targets that extend into the test period. We purge them
+\cite{lopezdeprado2018}. Without this, at $h=20$ the model is fit on twenty
+observations whose labels are partly determined by the data it is about to be
+evaluated on.
+
+\paragraph{Nested selection.}
+The number of regimes $K \in \{2,3,4\}$ and the gating rule (hard or soft) are
+selected \emph{within} each training window, on a trailing 25\% validation block
+that is itself embargoed from the inner training portion. The selected
+configuration is then refit on the full training window and applied to the test
+fold. This is the difference between reporting what the method achieves and
+reporting the best of six out-of-sample numbers.
+
+\paragraph{Metrics.}
+We pool predictions across folds and report RMSE and QLIKE
+\cite{patton2011},
+$\mathrm{QLIKE} = \frac{\sigma^2}{\hat\sigma^2} - \log\frac{\sigma^2}{\hat\sigma^2} - 1$,
+evaluated on variances. MSE and QLIKE are the two loss families that remain
+robust to noise in the volatility proxy, so a ranking that holds under both
+cannot be a proxy artifact. QLIKE diverges as $\hat\sigma \to 0$; we floor
+forecasts at the 1st percentile of realized values for reporting only.
+
+\paragraph{Significance.}
+We use the Diebold--Mariano test \cite{dieboldmariano1995} with a
+Newey--West \cite{neweywest1987} long-run variance at lag $h-1$, since
+overlapping targets make the loss differential autocorrelated by construction,
+and the Harvey--Leybourne--Newbold \cite{harvey1997} small-sample correction.
+Because each model is compared against several alternatives we apply a
+Holm--Bonferroni correction within each target.
+
+%======================================================================
+\section{Results}
+%======================================================================
+
+\subsection{Main comparison}
+
+\input{tables/main_results}
+
+Table~\ref{tab:main} reports pooled out-of-sample performance.
+
+The regime-conditioned model is beaten by a pooled ridge on the same features at
+every horizon, significantly so at $h=1$ and $h=20$ after correcting for multiple
+comparisons. It is never significantly better than HAR, GARCH(1,1) or EWMA under
+either loss. The only models it does significantly beat are the trivial
+ones---the zero forecast, the training mean, and (at $h=1$) the random walk in
+realized volatility. This is the whole difficulty with the original result in
+miniature: measured against a weak enough benchmark, the method looks
+convincing.
+
+The two losses disagree about which benchmark is best, which is informative
+rather than awkward. GARCH(1,1) wins on QLIKE at $h=1$ and $h=5$, consistent
+with \cite{hansen2005forecast}; the feature-rich ridge wins on RMSE everywhere
+and on QLIKE at $h=20$. QLIKE penalizes under-prediction heavily, so it favours
+the conditional-variance models that keep forecasts away from zero, while RMSE
+rewards the model fitted to minimize squared error. That the regime model loses
+under \emph{both} is what makes the conclusion robust to the choice of loss.
+
+As an implementation check, \textsc{regime\_single}---the ablation arm that
+collapses the mixture to one expert---produces predictions bitwise identical to
+the pooled ridge at every horizon, confirming that the mixture machinery reduces
+correctly. Every other regime arm is worse than it.
+
+\subsection{Where does the regime signal go?}
+
+\input{tables/ablation_results}
+
+Table~\ref{tab:ablation} applies the design of Section~\ref{sec:ablations} and is
+the central diagnostic. \textsc{gate\_shuffle}---which hands the model regime
+probabilities attached to the wrong day---does not degrade RMSE relative to
+\textsc{normal}. At $h=1$ and
+$h=5$ it is slightly \emph{better}; only at $h=20$ is the correctly aligned
+model ahead, and there by less than the seed-to-seed spread reported in
+Section~\ref{sec:seeds}. A model that depended on knowing the current regime
+could not behave this way.
+
+The natural reading is that the regime label is largely a coarse restatement of
+trailing realized volatility, which is already in the feature set as
+$\mathrm{RV}^{(1)}$, $\mathrm{RV}^{(5)}$ and $\mathrm{RV}^{(22)}$. Conditioning
+on a three-level discretization of a variable the model can already read
+continuously does not add information; it only fragments the training data
+across experts, costing statistical efficiency. This is why the regime model
+loses to the pooled ridge rather than merely tying with it.
+
+\subsection{Protocol ablation}
+\label{sec:protocol}
+
+\input{tables/protocol_ablation}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/protocol_ablation.png}
+  \caption{The apparent gain from regime conditioning as a function of the
+  evaluation protocol, not of the model. The model is identical in every bar;
+  only the protocol changes.}
+  \label{fig:protocol}
+\end{figure}
+
+Table~\ref{tab:protocol} and Figure~\ref{fig:protocol} trace the improvement of
+the regime model over its matched pooled-ridge baseline as four methodological
+choices are corrected in sequence, starting from a configuration that combines
+all four. The model is unchanged throughout; only the protocol moves.
+
+Under P0---aliased target, unstandardized fixed-penalty baseline, no embargo,
+and $K$ and the gating rule chosen by out-of-sample score---the regime model
+improves on its baseline by $1.9\%$ at $h=1$ and $1.3\%$ at $h=5$, both
+significant at the 1\% level. Correcting the baseline alone (P1) flips the sign
+at every horizon. Adding the embargo (P2) changes little here, which is worth
+saying plainly: at these horizons the leak is real but small, and we include it
+because its size is not knowable in advance rather than because it dominates.
+Nested selection (P3) removes a further $0.6$ to $2.6$ percentage points---the
+single largest correction---and the corrected target (P4) leaves the regime model
+between $3.4\%$ and $4.4\%$ worse than the pooled ridge, significantly so at
+every horizon.
+
+We want to be precise about what this does and does not show. Each individual
+choice in P0 has a defensible-sounding rationale, and none of them is fraud;
+they are the kind of thing that survives a code review because each looks local
+and harmless. The point is that their effects compound in the same direction,
+because all four increase the flexibility of the proposed model relative to its
+benchmark. The headline number is not robust to any of them.
+
+\subsection{Seed sensitivity}
+\label{sec:seeds}
+
+\input{tables/seed_robustness}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.85\columnwidth]{figures/seed_robustness.png}
+  \caption{Improvement over the pooled ridge across ten HMM initializations.
+  Every seed is negative, but the spread is wide enough that a single run could
+  report anything within it.}
+  \label{fig:seeds}
+\end{figure}
+
+Baum--Welch maximizes a non-convex likelihood. Table~\ref{tab:seed} and
+Figure~\ref{fig:seeds} report the spread of out-of-sample RMSE across ten random
+initializations, with everything else held fixed. The range is comparable to the
+differences the model comparison is trying to resolve, and the number of regimes
+chosen by nested selection is itself seed-dependent. A single-seed comparison
+between a regime model and a baseline is therefore close to uninformative, yet
+single-seed results are the norm in this literature.
+
+We emphasise that every seed still leaves the regime model behind the pooled
+ridge---the conclusion does not depend on the draw. What the spread shows is
+that the \emph{magnitude} reported by any one run is not a property of the
+method, and that a study reporting a small positive effect from a single seed
+has not measured anything. We recommend reporting the seed distribution as a
+matter of course.
+
+\subsection{Do the regimes mean anything?}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/regime_shading.png}
+  \caption{Out-of-sample filtered regimes for the $K{=}3$ model at $h{=}5$.
+  Shading marks contiguous hard-state segments with opacity proportional to
+  posterior confidence. Top: cumulative log return. Bottom: trailing realized
+  volatility. The high-volatility state aligns with 2011, 2015--16, 2018, 2020
+  and 2022.}
+  \label{fig:regimes}
+\end{figure}
+
+\input{tables/regime_characterization}
+
+It would be wrong to conclude that the HMM is failing to find structure.
+Figure~\ref{fig:regimes} shows that the filtered high-volatility state aligns
+closely with recognized stress episodes, and it does so causally, without
+lookahead. The fits are also well-behaved: across all 15 folds no state ever
+collapses, the canonical volatility ordering is strictly monotone in every fold
+for $K \in \{2,3\}$, and mean self-transition probabilities are $0.93$, $0.81$
+and $0.68$ for $K = 2, 3, 4$, so the inferred states are genuinely persistent
+rather than flickering.
+
+Table~\ref{tab:regimes} makes this quantitative, and the numbers are not
+marginal. The high-volatility state occupies $16\%$ of the out-of-sample period
+but contains $59\%$ of all volatility spikes: conditional on being in it, the
+probability of a top-decile spike over the next week is $36\%$ against an
+unconditional $10\%$, a lift of $3.6\times$. As a stress \emph{classifier} the
+causal HMM works well.
+
+This is the sharpest form of the paper's result. The regimes carry substantial
+information about whether a spike is coming, and still add nothing to the
+forecast, because that information is already present---continuously rather than
+in three levels---in the trailing realized-volatility features every model can
+read. Discretizing a variable the model already observes cannot add information,
+and it costs statistical efficiency by splitting the training data across
+experts.
+
+The distinction matters for practice. Regime labels may still be valuable for
+communication, risk limits, or position sizing, and a $3.6\times$ lift on stress
+is a usable signal for those purposes. Our result says only that they do not
+improve the conditional mean of realized volatility.
+
+%======================================================================
+\section{A Checklist}
+%======================================================================
+
+The audit that produced this paper reduces to a small number of checks that we
+would encourage as standard for regime-switching forecasting work:
+
+\begin{enumerate}
+  \item \textbf{Verify the target varies with the horizon.} Compare the marginal
+    distributions of $y^{(h)}$ across $h$. If they are identical, the target is
+    a single-period quantity at longer lead, not a multi-horizon forecast.
+  \item \textbf{Use filtered, not smoothed, state probabilities}, and verify it
+    numerically by checking that $\gamma_t$ is unchanged when data after $t$ is
+    deleted.
+  \item \textbf{Purge the training window by the horizon.}
+  \item \textbf{Select hyperparameters inside the training window.} If the
+    number of regimes is chosen on the test score, the test score is no longer
+    an estimate of out-of-sample performance.
+  \item \textbf{Give the baseline the same care as the model}---standardization,
+    tuned regularization, and access to the same features. Include HAR and
+    GARCH for volatility targets.
+  \item \textbf{Run a gate-shuffle ablation.} If shuffling the regime
+    probabilities in time does not hurt, the regime signal is not doing the work.
+  \item \textbf{Check that an ablation is not a duplicate.} Ours were: two of the
+    four arms in our first design returned bitwise-identical numbers.
+  \item \textbf{Relabel states canonically before pooling across folds}, or every
+    per-regime table silently mixes different regimes together.
+  \item \textbf{Report the seed distribution}, not a single run.
+  \item \textbf{Test significance} with a HAC-corrected Diebold--Mariano test and
+    correct for the number of comparisons.
+\end{enumerate}
+
+%======================================================================
+\section{Limitations}
+%======================================================================
+
+Our result is specific along several dimensions, and we do not want to
+overgeneralize from one asset.
+
+\emph{Single asset.} We study SPY. A broad equity index is the case where
+trailing realized volatility is most informative and therefore where regime
+labels have least to add; less liquid assets or cross-asset settings may differ.
+
+\emph{Linear experts.} The experts are ridge regressions. Regime conditioning
+might matter more with nonlinear experts, where a regime label could gate
+genuinely different functional forms rather than different linear coefficients.
+
+\emph{Gaussian HMM with a small emission vector.} Richer emissions, non-Gaussian
+observation densities, or duration-dependent transitions could plausibly recover
+regimes that are less redundant with trailing volatility.
+
+\emph{Conditional mean only.} We evaluate point forecasts. Regime models produce
+predictive \emph{distributions}, and their value may lie in tail quantiles or
+density forecasts, which our loss functions do not probe.
+
+\emph{Fixed evaluation window.} Results cover 2011--2026 out of sample. This
+period contains major stress episodes but is one realization of history.
+
+\emph{Pairwise testing.} We report Holm-corrected pairwise Diebold--Mariano
+tests against a fixed reference model. A Model Confidence Set
+\cite{hansen2011mcs} would characterize the set of models that cannot be
+distinguished from the best, which is a cleaner object when many models are
+compared at once; we use the pairwise form because our claims are specifically
+about the regime model against named benchmarks.
+
+%======================================================================
+\section{Conclusion}
+%======================================================================
+
+We set out to show that causally-inferred market regimes improve volatility
+forecasting, and found that they do not. Against properly specified benchmarks,
+with an embargoed split and hyperparameters selected inside the training window,
+an HMM regime-conditioned ridge is beaten by the same ridge fitted on pooled
+data. Shuffling the regime probabilities in time costs nothing, which localizes
+the failure to the regime signal itself rather than to the conditioning
+mechanism: the inferred state is largely a discretization of trailing volatility
+that the model can already observe directly.
+
+We were able to recover a significant positive result by reintroducing four
+common evaluation shortcuts, which we think is the more useful contribution.
+Negative results in forecasting are hard to interpret in isolation, because a
+null can always be attributed to insufficient tuning. Showing the precise path
+from a null to a significant positive---and back---makes the mechanism concrete.
+
+\section*{Reproducibility}
+
+All results are produced from raw data by three entry points---the study driver,
+the protocol ablation, and the seed sweep---and every table and figure in this
+paper is generated programmatically from the stored artifacts rather than
+transcribed. This is not incidental tidiness: the project this paper grew out of
+carried a hand-copied results table whose numbers matched no artifact in the
+repository, and automating the path from artifact to table is what caught it.
+
+The correctness claims that matter are covered by tests, including the
+lookahead check described in Section~\ref{sec:protocol-def}: filtered
+probabilities are recomputed on truncated inputs and asserted equal, so a
+regression to smoothed posteriors would fail the suite rather than quietly
+improve the results. Code, configuration and artifacts accompany the submission.
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}

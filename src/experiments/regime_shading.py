@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Sequence
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 @dataclass(frozen=True)
@@ -37,16 +37,18 @@ class RegimeShadingConfig:
 
 
 def _load_oos_probs(fp: Path) -> pd.DataFrame:
+    """Load an OOS regime-probability CSV, whatever the date column is called.
+
+    Different writers in this repo emit the index as ``date`` or ``Date``, so
+    match case-insensitively and otherwise fall back to the first column.
+    """
     df = pd.read_csv(fp)
-    # expect either date column or already-indexed
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"])
-        df = df.sort_values("date").set_index("date")
-    else:
-        # try first column as date
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0])
-        df = df.set_index(df.columns[0]).sort_index()
-    return df
+
+    date_col = next((c for c in df.columns if str(c).strip().lower() == "date"), df.columns[0])
+    idx = pd.to_datetime(df[date_col])
+    df = df.drop(columns=[date_col])
+    df.index = pd.DatetimeIndex(idx)
+    return df.sort_index()
 
 
 def _prob_cols(df: pd.DataFrame) -> list[str]:
@@ -82,10 +84,12 @@ def _compute_level_series(data: pd.DataFrame, cfg: RegimeShadingConfig) -> pd.Se
         px = data[cfg.price_col].astype(float)
         return np.log(px)
 
-    # Else use returns explicitly
+    # Else use returns explicitly. ret_1d is already a log return, so the
+    # cumulative log level is its plain cumulative sum; applying log1p first
+    # would treat it as a simple return and distort the level.
     if cfg.ret_col is not None and cfg.ret_col in data.columns:
         r = data[cfg.ret_col].astype(float)
-        return np.log1p(r).cumsum()
+        return r.cumsum()
 
     raise ValueError(
         f"Could not build level series: missing price_col='{cfg.price_col}' and ret_col='{cfg.ret_col}'."
@@ -164,16 +168,26 @@ def make_regime_shading_plot(
     """
     oos = _load_oos_probs(cfg.oos_probs_csv)
     pcols = _prob_cols(oos)
-    probs = oos[pcols].to_numpy(dtype=float)
 
     # align to dates that exist in data
     aligned = data.join(oos, how="inner")
     if aligned.empty:
         raise ValueError("No overlapping dates between data and OOS regime probs.")
 
-    # rebuild probs after join to preserve alignment
-    oos_aligned = aligned[pcols]
-    probs_aligned = oos_aligned.to_numpy(dtype=float)
+    # Rebuild probs after the join to preserve alignment. When K is selected per
+    # fold the concatenated table is ragged (a K=2 fold has no p_state_2), so
+    # missing entries mean "zero mass on a state this fold did not have"; rows
+    # with no mass at all are dropped rather than allowed to poison the shading.
+    probs_aligned = aligned[pcols].to_numpy(dtype=float)
+    probs_aligned = np.nan_to_num(probs_aligned, nan=0.0)
+
+    keep = probs_aligned.sum(axis=1) > 0
+    if not keep.all():
+        aligned = aligned.loc[keep]
+        probs_aligned = probs_aligned[keep]
+    if len(aligned) == 0:
+        raise ValueError("No usable rows with regime mass after alignment.")
+
     x = aligned.index
 
     level = _compute_level_series(aligned, cfg)
@@ -197,14 +211,21 @@ def make_regime_shading_plot(
         regime_vol[k] = float(np.nanmean(vol[mask])) if mask.any() else float("inf")
 
     ordered = sorted(regime_vol, key=regime_vol.get)
-    labels = {ordered[0]: "Low Vol", ordered[-1]: "High Vol"}
+    if len(ordered) == 1:
+        labels = {ordered[0]: "Single regime"}
+    elif len(ordered) == 2:
+        labels = {ordered[0]: "Low vol", ordered[1]: "High vol"}
+    else:
+        labels = {ordered[0]: "Low vol", ordered[-1]: "High vol"}
+        for i, k in enumerate(ordered[1:-1], start=1):
+            labels[k] = "Mid vol" if len(ordered) == 3 else f"Mid vol {i}"
 
     # Shade both panels using the SAME states (consistent boundaries)
     _shade_with_states(ax1, x, states, maxp, cfg)
     ax1.plot(x, level, lw=1.2)
     ax1.axvline(oos.index.min(), ls="--", lw=1, alpha=0.6)
     ax1.set_ylabel(
-        "log price" if (cfg.price_col and cfg.price_col in aligned.columns) else f"cum log(1+{cfg.ret_col})"
+        "log price" if (cfg.price_col and cfg.price_col in aligned.columns) else "cumulative log return"
     )
 
     _shade_with_states(ax2, x, states, maxp, cfg)

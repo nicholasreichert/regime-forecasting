@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, is_dataclass    
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import pandas as pd
+
 
 def utc_run_id(prefix: str = "run") -> str:
     # e.g. run_2026-02-02T13-22-10Z

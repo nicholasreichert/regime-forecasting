@@ -1,3 +1,12 @@
+"""DEPRECATED. Superseded by :mod:`src.eval.oos`.
+
+Retained only because ``scripts/legacy/run_experiments.py`` imports it. This
+version averages per-fold RMSEs rather than pooling observations, applies no
+embargo by default, and returns no prediction series, so it cannot feed the
+Diebold--Mariano tests. New work should use
+``src.eval.oos.collect_oos_baseline`` plus ``compute_metrics``.
+"""
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -6,13 +15,13 @@ import numpy as np
 import pandas as pd
 
 from src.eval.metrics import (
+    directional_accuracy,
     mae,
     rmse,
-    directional_accuracy,
     spearman_corr,
-    top_decile_hit_rate, 
+    top_decile_hit_rate,
 )
-from src.eval.subsets import high_vol_mask, top_quantile_mask, apply_mask
+from src.eval.subsets import apply_mask, high_vol_mask, top_quantile_mask
 from src.eval.walk_forward import walk_forward_splits
 
 

@@ -1,0 +1,14 @@
+\begin{table}[t]
+\caption{Sensitivity to the HMM's random initialization. Ten seeds, everything else fixed. $\Delta$\% is improvement over the (deterministic) pooled ridge. The spread across seeds is comparable to the effect size the comparison is trying to resolve.}
+\label{tab:seed}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Horizon & Pooled ridge & RMSE mean & RMSE s.d. & $\Delta$\% min & $\Delta$\% max \\
+\midrule
+$h=1$ & 0.006968 & 0.007114 & 0.000081 & -3.69 & -0.18 \\
+$h=5$ & 0.004719 & 0.004948 & 0.000059 & -6.71 & -1.94 \\
+$h=20$ & 0.004867 & 0.005043 & 0.000046 & -5.19 & -2.36 \\
+\bottomrule
+\end{tabular}
+\end{table}
