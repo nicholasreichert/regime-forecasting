@@ -13,18 +13,23 @@ answer gets manufactured by four common evaluation shortcuts.
 
 ## Headline findings
 
-1. **Regime conditioning does not help.** Against properly specified benchmarks
-   (HAR, GARCH(1,1), EWMA) and a tuned pooled ridge on identical features, the
-   HMM regime-conditioned mixture is never significantly better at any horizon,
-   under either squared-error or QLIKE loss. It is significantly *worse* than the
-   pooled ridge at h=1 and h=20.
+1. **Regime conditioning does not help — on any of 20 assets.** Against properly
+   specified benchmarks (HAR, GARCH(1,1), EWMA) and a tuned pooled ridge on
+   identical features, the HMM regime-conditioned mixture loses in **58 of 60
+   asset-horizon pairs** (median −2.3% RMSE), significantly in 37, and is
+   significantly better in *none*. The universe spans equity indices, sectors,
+   single names, rates, credit, commodities, FX and crypto.
 
-2. **Shuffling the regimes in time costs nothing.** An ablation that hands the
-   model regime probabilities drawn from the correct marginal distribution but
-   attached to the wrong day performs as well as the correctly aligned model —
-   and at h=1 and h=5, slightly better. The inferred state is largely a
-   discretization of trailing realized volatility that the model already
-   observes directly as a feature.
+   ![Cross-asset results](paper/figures/multi_asset.png)
+
+2. **The regime signal is real but four times too small to pay for itself.**
+   Shuffling the regime probabilities in time — correct marginal distribution,
+   wrong day — costs **0.69 percentage points** of RMSE on average (Wilcoxon
+   p=0.023), rising with horizon. So timing does carry information. But
+   partitioning the training data across per-regime experts costs **2.75
+   points**. That ratio, not an absence of signal, is the result.
+
+   ![Value vs cost of regime timing](paper/figures/multi_asset_gate_shuffle.png)
 
 3. **Four protocol shortcuts manufacture a significant positive result.**
    Starting from an aliased multi-horizon target, an unstandardized
@@ -111,6 +116,10 @@ uv run python -m src.experiments.protocol_ablation
 
 ```bash
 uv run python -m src.experiments.seed_robustness
+```
+
+```bash
+uv run python -m src.experiments.multi_asset
 ```
 
 Then regenerate every table and figure in the paper from those artifacts:

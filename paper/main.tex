@@ -30,19 +30,27 @@ the gating rule are selected on an inner validation block rather than on the
 test data, and the regime model is compared against properly specified
 volatility benchmarks (HAR, GARCH(1,1), EWMA) rather than against a naive mean.
 
-Under this protocol, regime conditioning does not improve volatility forecasts
-for SPY over 2005--2026. A pooled ridge regression on the same features beats
-the regime-conditioned mixture at every horizon, and the regime model is never
-significantly better than HAR, GARCH(1,1) or EWMA under either squared-error or
-QLIKE loss. The only benchmarks it significantly beats are trivial ones. Two
-diagnostics explain why. First, an ablation that time-shuffles the regime
-probabilities---preserving their marginal distribution but destroying their
-alignment with the market---performs \emph{no worse}, and at $h{=}1$ and $h{=}5$
-slightly better, than the correctly aligned model: the timing of the inferred
-regime carries essentially no exploitable signal beyond the volatility level
-that is already in the feature set. Second, the spread induced purely by the
-HMM's random initialization is of the same order as the effect being measured,
-so any single-seed comparison is uninformative.
+Under this protocol, regime conditioning does not improve volatility forecasts.
+Across 20 assets spanning equity indices, sectors, single names, rates, credit,
+commodities, FX and crypto, a pooled ridge regression on identical features
+beats the regime-conditioned mixture in 58 of 60 asset-horizon pairs (median
+$-2.3\%$ RMSE), significantly so in 37; the regime model is significantly better
+than the pooled ridge in none of them, and is never significantly better than
+HAR, GARCH(1,1) or EWMA under either squared-error or QLIKE loss.
+
+An ablation that time-shuffles the regime probabilities---preserving their
+marginal distribution while destroying their alignment with the market---locates
+the failure. Correct regime timing is worth a small but statistically detectable
+amount, $0.69$ percentage points of RMSE on average and rising with horizon
+(Wilcoxon $p = 0.023$). Partitioning the training data across per-regime experts
+costs $2.75$ points. The regime signal is real; it is simply about four times too
+small to pay for the machinery used to exploit it. Consistent with this, the
+inferred high-volatility state is a genuinely good stress classifier---16\% of
+the sample, 59\% of all volatility spikes, a $3.6\times$ lift---while adding
+nothing to the conditional mean, because the same information is already present
+continuously in trailing realized volatility. We also find that the spread
+induced purely by the HMM's random initialization is of the same order as the
+effect being measured, so single-seed comparisons are uninformative.
 
 We then quantify how a positive result can be manufactured. Starting from a
 protocol that combines four individually plausible choices---a multi-horizon
@@ -89,20 +97,21 @@ much of the original effect each methodological shortcut contributed.
 
 \paragraph{Contributions.}
 \begin{enumerate}
-  \item \textbf{A causal evaluation.} We evaluate HMM regime-conditioned
-    volatility forecasting under strict online filtering, an embargoed
-    walk-forward split, nested hyperparameter selection, and a benchmark set
-    that includes HAR \cite{corsi2009}, GARCH(1,1) \cite{bollerslev1986}, and
-    EWMA \cite{riskmetrics1996}. Regime conditioning provides no significant
-    gain at any horizon under either MSE or QLIKE \cite{patton2011}.
+  \item \textbf{A causal evaluation, replicated across 20 assets.} We evaluate
+    HMM regime-conditioned volatility forecasting under strict online filtering,
+    an embargoed walk-forward split, nested hyperparameter selection, and a
+    benchmark set that includes HAR \cite{corsi2009}, GARCH(1,1)
+    \cite{bollerslev1986}, and EWMA \cite{riskmetrics1996}. Regime conditioning
+    provides no significant gain at any horizon, for any asset, under either MSE
+    or QLIKE \cite{patton2011}.
 
-  \item \textbf{A factorized ablation of the regime signal.} We separate the
-    value of \emph{regime-specialized experts} from the value of \emph{knowing
-    the current regime}, by perturbing the training partition and the
-    prediction-time gate independently. Destroying the temporal alignment of
-    the gate costs nothing, which localizes the failure: the inferred state
-    sequence adds no information beyond the trailing volatility already
-    available as a feature.
+  \item \textbf{A factorized ablation that quantifies the trade-off.} We separate
+    the value of \emph{regime-specialized experts} from the value of
+    \emph{knowing the current regime}, by perturbing the training partition and
+    the prediction-time gate independently. This turns a null into an accounting
+    identity: correct regime timing is worth $+0.69$ points of RMSE, partitioning
+    the data costs $2.75$, and the difference is the result. The signal is real
+    but is dominated by the cost of the mechanism used to exploit it.
 
   \item \textbf{A protocol ablation.} We quantify how much apparent improvement
     is produced by each of four common evaluation shortcuts, and show that they
@@ -397,21 +406,23 @@ correctly. Every other regime arm is worse than it.
 \input{tables/ablation_results}
 
 Table~\ref{tab:ablation} applies the design of Section~\ref{sec:ablations} and is
-the central diagnostic. \textsc{gate\_shuffle}---which hands the model regime
-probabilities attached to the wrong day---does not degrade RMSE relative to
-\textsc{normal}. At $h=1$ and
-$h=5$ it is slightly \emph{better}; only at $h=20$ is the correctly aligned
-model ahead, and there by less than the seed-to-seed spread reported in
-Section~\ref{sec:seeds}. A model that depended on knowing the current regime
-could not behave this way.
+the central diagnostic. On SPY, \textsc{gate\_shuffle}---which hands the model
+regime probabilities attached to the wrong day---does not degrade RMSE relative
+to \textsc{normal}, and at $h=1$ and $h=5$ is slightly \emph{better}.
 
-The natural reading is that the regime label is largely a coarse restatement of
-trailing realized volatility, which is already in the feature set as
-$\mathrm{RV}^{(1)}$, $\mathrm{RV}^{(5)}$ and $\mathrm{RV}^{(22)}$. Conditioning
-on a three-level discretization of a variable the model can already read
-continuously does not add information; it only fragments the training data
-across experts, costing statistical efficiency. This is why the regime model
-loses to the pooled ridge rather than merely tying with it.
+Taken alone this would suggest regime timing is worthless. The cross-asset
+evidence in Section~\ref{sec:multiasset} shows that reading is too strong, and we
+report it here as a caution against drawing mechanism conclusions from a single
+series: pooled over 60 asset-horizon pairs, correct timing does carry a small,
+statistically detectable benefit. SPY happens to be a case where it does not.
+
+The reading that survives both is that the regime label is largely a coarse
+restatement of trailing realized volatility, already in the feature set as
+$\mathrm{RV}^{(1)}$, $\mathrm{RV}^{(5)}$ and $\mathrm{RV}^{(22)}$. A three-level
+discretization of a variable the model can already read continuously adds very
+little, and fragmenting the training data across experts to exploit it costs
+more than the little it adds. Section~\ref{sec:multiasset} puts numbers on both
+sides of that trade.
 
 \subsection{Protocol ablation}
 \label{sec:protocol}
@@ -450,6 +461,76 @@ they are the kind of thing that survives a code review because each looks local
 and harmless. The point is that their effects compound in the same direction,
 because all four increase the flexibility of the proposed model relative to its
 benchmark. The headline number is not robust to any of them.
+
+\subsection{Does the null hold away from SPY?}
+\label{sec:multiasset}
+
+\input{tables/multi_asset}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/multi_asset.png}
+  \caption{Cross-asset replication. Each point is one asset at one horizon;
+  positive would favour regime conditioning. 58 of 60 cells are negative.}
+  \label{fig:multiasset}
+\end{figure}
+
+A single-asset null is weak evidence, and SPY is the least favourable case one
+could pick: it is the most liquid and most-studied series available, and the one
+where trailing realized volatility is most informative, so it is where regime
+labels have least room to add anything. We therefore repeat the corrected
+protocol on 20 assets spanning broad equity indices, sectors, single names,
+long-duration rates, high-yield credit, commodities, FX and crypto, with sample
+histories of 12 to 21 years.
+
+The null holds essentially everywhere. Table~\ref{tab:multiasset} and
+Figure~\ref{fig:multiasset} report the regime model's improvement over its
+matched pooled ridge: 58 of 60 asset-horizon cells are negative, with median
+$-1.05\%$, $-2.39\%$ and $-3.25\%$ at $h = 1, 5, 20$. Of the 60 cells, 37 are
+significant deteriorations under a Diebold--Mariano test and \emph{none} is a
+significant improvement. The two positive cells are both crude oil (USO) and
+neither is significant. Correlations between an asset's mean volatility and the
+size of the effect are small and inconsistent in sign ($+0.14$, $+0.20$, $+0.05$
+across horizons), so we find no evidence that regime conditioning pays off for
+more volatile or less well-behaved assets.
+
+\subsection{What regime timing is actually worth}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/multi_asset_gate_shuffle.png}
+  \caption{Left: the paired benefit of correct regime timing over time-shuffled
+  regimes, in percentage points of RMSE, one point per asset-horizon pair; bars
+  are means. Right: that benefit against the cost of partitioning the training
+  data across experts. Both are measured relative to the same pooled-ridge
+  control.}
+  \label{fig:gateshuffle}
+\end{figure}
+
+The cross-section is large enough to measure what the single-asset ablation
+could only bound. Pooling all 60 pairs, correct regime timing beats shuffled
+timing in 37 of them. That is not significant as a sign test ($p = 0.09$), but
+the paired magnitudes are: the mean benefit is $+0.69$ percentage points of RMSE
+and a Wilcoxon signed-rank test on the paired differences gives $p = 0.023$. The
+benefit also grows with horizon, from $+0.23$ points at $h{=}1$ to $+0.54$ at
+$h{=}5$ and $+1.29$ at $h{=}20$, which is what one would expect if the regime
+state carries information about persistent volatility levels rather than about
+tomorrow specifically.
+
+So regime timing is not worthless. Figure~\ref{fig:gateshuffle} places that
+finding against its cost. The same regime machinery that buys $0.69$ points of
+timing information gives up $2.75$ points by splitting the training window
+across per-regime experts. The result is not that the HMM finds nothing; it is
+that what it finds is roughly four times too small to pay for how it is being
+used.
+
+This reframes what a positive result would require. It is not enough for a
+regime detector to be informative---ours demonstrably is. It has to be
+informative enough to beat the efficiency loss of conditioning on it, and the
+gap here is a factor of four, not a few percent. Approaches that keep the regime
+signal while avoiding the partition---using regime probabilities as additional
+features rather than as a gate, or shrinking per-regime experts toward a pooled
+fit---are the natural place to look, and we did not test them.
 
 \subsection{Seed sensitivity}
 \label{sec:seeds}
@@ -545,8 +626,11 @@ would encourage as standard for regime-switching forecasting work:
   \item \textbf{Give the baseline the same care as the model}---standardization,
     tuned regularization, and access to the same features. Include HAR and
     GARCH for volatility targets.
-  \item \textbf{Run a gate-shuffle ablation.} If shuffling the regime
-    probabilities in time does not hurt, the regime signal is not doing the work.
+  \item \textbf{Run a gate-shuffle ablation}, and compare what correct timing
+    buys against what the conditioning mechanism costs. Both quantities are
+    measurable on the same scale, and only their difference is the result.
+    Interpret the ablation across many series: on a single asset it is too noisy
+    to distinguish ``no signal'' from ``signal too small to pay for itself''.
   \item \textbf{Check that an ablation is not a duplicate.} Ours were: two of the
     four arms in our first design returned bitwise-identical numbers.
   \item \textbf{Relabel states canonically before pooling across folds}, or every
@@ -563,13 +647,19 @@ would encourage as standard for regime-switching forecasting work:
 Our result is specific along several dimensions, and we do not want to
 overgeneralize from one asset.
 
-\emph{Single asset.} We study SPY. A broad equity index is the case where
-trailing realized volatility is most informative and therefore where regime
-labels have least to add; less liquid assets or cross-asset settings may differ.
+\emph{Asset universe.} We cover 20 liquid, exchange-traded instruments. They
+span asset classes but they are all liquid and all have long histories; genuinely
+illiquid or short-history assets, and instruments whose volatility is driven by
+scheduled events rather than by persistence, are not represented.
 
-\emph{Linear experts.} The experts are ridge regressions. Regime conditioning
-might matter more with nonlinear experts, where a regime label could gate
-genuinely different functional forms rather than different linear coefficients.
+\emph{Linear experts, and gating as the only mechanism.} The experts are ridge
+regressions combined by a gate. Section~\ref{sec:multiasset} shows the binding
+constraint is the efficiency cost of partitioning, not the absence of signal, so
+the most informative untested variants are those that avoid the partition:
+regime probabilities as features in a single pooled model, or per-regime experts
+shrunk toward a pooled fit. Nonlinear experts might also change the picture,
+since a regime label could then gate genuinely different functional forms rather
+than different linear coefficients.
 
 \emph{Gaussian HMM with a small emission vector.} Richer emissions, non-Gaussian
 observation densities, or duration-dependent transitions could plausibly recover
@@ -597,16 +687,23 @@ We set out to show that causally-inferred market regimes improve volatility
 forecasting, and found that they do not. Against properly specified benchmarks,
 with an embargoed split and hyperparameters selected inside the training window,
 an HMM regime-conditioned ridge is beaten by the same ridge fitted on pooled
-data. Shuffling the regime probabilities in time costs nothing, which localizes
-the failure to the regime signal itself rather than to the conditioning
-mechanism: the inferred state is largely a discretization of trailing volatility
-that the model can already observe directly.
+data in 58 of 60 asset-horizon pairs, and beats it significantly in none.
 
-We were able to recover a significant positive result by reintroducing four
-common evaluation shortcuts, which we think is the more useful contribution.
-Negative results in forecasting are hard to interpret in isolation, because a
-null can always be attributed to insufficient tuning. Showing the precise path
-from a null to a significant positive---and back---makes the mechanism concrete.
+The more useful finding is why. The regime signal is not absent: the inferred
+high-volatility state predicts stress with a $3.6\times$ lift, and correct regime
+timing is worth a small but measurable $0.69$ points of RMSE. It is simply
+dominated by the $2.75$ points that conditioning gives up in statistical
+efficiency. A null of this shape says something different from ``there is no
+structure here''---it says the structure is real and the mechanism for
+exploiting it is too expensive, which points at a specific class of fixes rather
+than at abandonment.
+
+We were also able to recover a significant positive result by reintroducing four
+common evaluation shortcuts. Negative results in forecasting are hard to
+interpret in isolation, because a null can always be attributed to insufficient
+tuning. Showing the precise path from a null to a significant positive---and
+back---makes the failure mode concrete and, we hope, harder to reproduce by
+accident.
 
 \section*{Reproducibility}
 
