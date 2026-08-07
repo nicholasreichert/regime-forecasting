@@ -387,6 +387,146 @@ def collect_oos_regime_nested(
 
 
 # --------------------------------------------------------------------------
+# variants that keep the regime signal without paying the full partition cost
+# --------------------------------------------------------------------------
+
+SHRINKAGE_GRID: tuple[float, ...] = (0.0, 0.25, 0.5, 0.75, 0.9, 1.0)
+
+
+def collect_oos_regime_variant(
+    df: pd.DataFrame,
+    features: Sequence[str],
+    target: str,
+    ev: EvalSpec,
+    K_values: Sequence[int],
+    variant: str,
+    cache: HMMCache,
+    modes: Sequence[str] = ("hard", "soft"),
+    ridge_alpha: Optional[float] = None,
+    min_points_per_regime: int = 200,
+    seed: int = 0,
+    val_fraction: float = 0.25,
+) -> OOSResult:
+    """Walk-forward OOS predictions for the two non-gating uses of the regime signal.
+
+    ``variant="features"``
+        A single pooled ridge with the regime posteriors appended to the feature
+        matrix. No partition, so no efficiency cost; only K is selected.
+
+    ``variant="shrunk"``
+        The usual gated mixture, shrunk toward the pooled fit by a factor chosen
+        on the inner validation block alongside K and the gating mode. The grid
+        includes both endpoints, so this variant can recover either the full
+        mixture or the pooled ridge if the data prefer them.
+
+    Everything else - embargo, strictly causal filtering, nested selection - is
+    identical to :func:`collect_oos_regime_nested`.
+    """
+    from src.eval.walk_forward import inner_validation_split
+    from src.models.regime_conditioned import RegimeFeatureRidge
+
+    if variant not in {"features", "shrunk"}:
+        raise ValueError(f"Unknown variant: {variant}")
+
+    y_true_parts: List[pd.Series] = []
+    y_pred_parts: List[pd.Series] = []
+    boundaries: List[pd.Timestamp] = []
+    chosen_K: List[int] = []
+    chosen_lam: List[float] = []
+
+    def _fit_predict(Xtr, ytr, ptr, Xte, pte, K, mode, lam):
+        if variant == "features":
+            m = RegimeFeatureRidge(alpha=ridge_alpha)
+            m.fit(Xtr, ytr, ptr)
+            return m.predict(Xte, pte)
+        m = RegimeConditionedRidge(
+            alpha=ridge_alpha, mode=mode, min_points_per_regime=min_points_per_regime
+        )
+        m.fit(Xtr, ytr, ptr)
+        return m.predict_shrunk(Xte, pte, lam)
+
+    for split_idx, split in enumerate(_splits(df, ev)):
+        train = df.loc[split.train_idx]
+        test = df.loc[split.test_idx]
+
+        inner_tr_idx, inner_val_idx = inner_validation_split(
+            split.train_idx, val_fraction=val_fraction, embargo=ev.embargo
+        )
+        inner_tr, inner_val = df.loc[inner_tr_idx], df.loc[inner_val_idx]
+
+        best, best_score = None, np.inf
+        for K in K_values:
+            hres = cache.get(inner_tr, inner_val, K, seed)
+            n_tr = min(len(inner_tr), hres.train_probs.shape[0])
+            n_va = min(len(inner_val), hres.test_probs.shape[0])
+            Xtr_i = inner_tr[list(features)].iloc[-n_tr:]
+            ytr_i = inner_tr[target].iloc[-n_tr:]
+            Xva_i = inner_val[list(features)].iloc[-n_va:]
+            yva_i = inner_val[target].iloc[-n_va:].to_numpy(dtype=float)
+            ptr = hres.train_probs[-n_tr:]
+            pva = hres.test_probs[-n_va:]
+
+            if variant == "features":
+                pv = _fit_predict(Xtr_i, ytr_i, ptr, Xva_i, pva, K, None, None)
+                s = rmse(yva_i, pv)
+                if np.isfinite(s) and s < best_score:
+                    best_score, best = s, (int(K), None, None)
+                continue
+
+            for mode in modes:
+                m = RegimeConditionedRidge(
+                    alpha=ridge_alpha, mode=mode, min_points_per_regime=min_points_per_regime
+                )
+                m.fit(Xtr_i, ytr_i, ptr)
+                # gated and pooled predictions are shared across the whole
+                # shrinkage grid, so lambda costs nothing extra to select
+                gated = m.predict(Xva_i, pva)
+                pooled = m.global_model.predict(Xva_i)
+                for lam in SHRINKAGE_GRID:
+                    pv = lam * pooled + (1.0 - lam) * gated
+                    s = rmse(yva_i, pv)
+                    if np.isfinite(s) and s < best_score:
+                        best_score, best = s, (int(K), mode, float(lam))
+
+        if best is None:
+            best = (int(min(K_values)), modes[0], 1.0)
+        K_star, mode_star, lam_star = best
+        chosen_K.append(K_star)
+        if lam_star is not None:
+            chosen_lam.append(lam_star)
+
+        hres = cache.get(train, test, K_star, seed)
+        n_train = min(len(train), hres.train_probs.shape[0])
+        n_test = min(len(test), hres.test_probs.shape[0])
+        Xtr = train[list(features)].iloc[-n_train:]
+        ytr = train[target].iloc[-n_train:]
+        te = test.iloc[-n_test:]
+
+        pred = _fit_predict(
+            Xtr, ytr, hres.train_probs[-n_train:],
+            te[list(features)], hres.test_probs[-n_test:],
+            K_star, mode_star, lam_star,
+        )
+
+        y_true_parts.append(te[target].astype(float))
+        y_pred_parts.append(pd.Series(np.asarray(pred, dtype=float), index=te.index))
+        boundaries.append(split.test_start)
+
+    diagnostics = {"sel_K_mode": float(max(set(chosen_K), key=chosen_K.count)) if chosen_K else np.nan}
+    if chosen_lam:
+        diagnostics["sel_lambda_mean"] = float(np.mean(chosen_lam))
+        # how often the inner split preferred the pooled fit outright
+        diagnostics["sel_lambda_is_one_frac"] = float(np.mean([x >= 1.0 for x in chosen_lam]))
+
+    return OOSResult(
+        y_true=pd.concat(y_true_parts).sort_index(),
+        y_pred=pd.concat(y_pred_parts).sort_index(),
+        fold_boundaries=boundaries,
+        diagnostics=diagnostics,
+    )
+
+
+# --------------------------------------------------------------------------
 # metrics over pooled OOS predictions
 # --------------------------------------------------------------------------
 

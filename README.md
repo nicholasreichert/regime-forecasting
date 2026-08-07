@@ -3,9 +3,10 @@
 Do HMM-inferred market regimes actually improve volatility forecasting?
 
 This repository contains a strictly causal evaluation of regime-conditioned
-forecasting on SPY (2005–2026), plus the accompanying paper. The short answer is
-**no** — and the more useful result is that we can show precisely how a positive
-answer gets manufactured by four common evaluation shortcuts.
+forecasting across 20 assets (2005–2026), plus the accompanying paper. The short
+answer is **no**, and the more useful results are *why* — the inferred regime is
+96% redundant with a feature every model already has — and a demonstration of how
+a significant positive answer gets manufactured by four evaluation shortcuts.
 
 > Research and educational purposes only. Not financial advice.
 
@@ -22,16 +23,36 @@ answer gets manufactured by four common evaluation shortcuts.
 
    ![Cross-asset results](paper/figures/multi_asset.png)
 
-2. **The regime signal is real but four times too small to pay for itself.**
-   Shuffling the regime probabilities in time — correct marginal distribution,
-   wrong day — costs **0.69 percentage points** of RMSE on average (Wilcoxon
-   p=0.023), rising with horizon. So timing does carry information. But
-   partitioning the training data across per-regime experts costs **2.75
-   points**. That ratio, not an absence of signal, is the result.
+2. **Every route into the model loses — including the ones that avoid gating.**
+   We tested all four: full gating, gating with a time-shuffled gate, gating
+   shrunk toward the pooled fit, and the posteriors as plain features with no
+   partition at all. Across **240 Diebold–Mariano tests, not one** shows a
+   significant improvement.
 
-   ![Value vs cost of regime timing](paper/figures/multi_asset_gate_shuffle.png)
+   | Route | Median vs pooled ridge | Wins | Sig. better |
+   |---|---|---|---|
+   | Regime gating (full mixture) | −2.30% | 2/60 | **0** |
+   | …with time-shuffled gate | −3.14% | 3/60 | **0** |
+   | Gating shrunk to pooled | −0.72% | 11/60 | **0** |
+   | Posteriors as features (no partition) | −0.63% | 4/60 | **0** |
+   | GARCH(1,1) — *ignores regimes* | +0.59% | 39/60 | 4 |
 
-3. **Four protocol shortcuts manufacture a significant positive result.**
+3. **The cost decomposes, and it isn't only the mechanism.** Injecting the regime
+   signal at all costs **1.16pp** of RMSE (Wilcoxon p=2.4e−9); gating on it costs
+   a further **1.59pp** (p=8.7e−8); correct timing returns only **+0.69pp**.
+
+   ![Cost decomposition](paper/figures/cost_decomposition.png)
+
+4. **The mechanism is redundancy.** The HMM's hard state is **95.7% recoverable
+   from the three HAR components alone** (base rate 46.2%). It is a noisy,
+   three-level, annually-refitted re-encoding of a quantity every model already
+   reads continuously. That's why no way of injecting it helps.
+
+5. **The null is measured, not merely unrejected.** Equivalence bounds report
+   what size of improvement the data exclude. In the median asset-horizon pair,
+   *no* improvement of any size is consistent with the evidence at 95%.
+
+6. **Four protocol shortcuts manufacture a significant positive result.**
    Starting from an aliased multi-horizon target, an unstandardized
    fixed-penalty baseline, no train/test embargo, and hyperparameters selected on
    the test score, the regime model shows a significant improvement. Removing
@@ -49,14 +70,14 @@ answer gets manufactured by four common evaluation shortcuts.
    (Improvement of the regime model over its *matched* pooled-ridge baseline.
    At h=1 the aliased and realized-volatility targets coincide, so P3 = P4.)
 
-4. **Seed-to-seed variation rivals the effect size.** Across 10 HMM
+7. **Seed-to-seed variation rivals the effect size.** Across 10 HMM
    initializations the improvement over pooled ridge ranges from −3.7% to −0.2%
    at h=1, −6.7% to −1.9% at h=5, and −5.2% to −2.4% at h=20 — spreads of 3–5
    percentage points, comparable to the differences being tested. The selected
    number of regimes is seed-dependent too. Every seed is negative, so the
    conclusion holds, but no single run measures the magnitude.
 
-5. **The regimes themselves are real.** The filtered high-volatility state
+8. **The regimes themselves are real.** The filtered high-volatility state
    aligns with 2011, 2018, 2020 and 2022 without any lookahead. They are
    interpretable — just not *incrementally* useful for point forecasting.
 
@@ -71,7 +92,7 @@ answer gets manufactured by four common evaluation shortcuts.
   `hmmlearn`'s `predict_proba` (smoothed, conditions on the whole sequence) or
   `predict` (Viterbi) would be lookahead. The test-window filter is warm-started
   from the final training belief.
-* **Embargoed walk-forward.** 6 years train / 1 year test, rolling by 1 year, 14
+* **Embargoed walk-forward.** 6 years train / 1 year test, rolling by 1 year, 15
   folds. The last `h` training rows are purged because their targets extend into
   the test fold.
 * **Nested selection.** `K ∈ {2,3,4}` and hard-vs-soft gating are chosen on a
@@ -126,6 +147,7 @@ Then regenerate every table and figure in the paper from those artifacts:
 
 ```bash
 uv run python -m src.experiments.make_paper_tables
+uv run python -m src.experiments.make_multi_asset_outputs
 ```
 
 Build the paper:
@@ -171,11 +193,14 @@ Distilled from the audit that produced this paper:
 3. Purge the training window by the horizon.
 4. Select hyperparameters inside the training window.
 5. Give the baseline the same care as the model — standardization, tuned regularization, same features. Include HAR and GARCH for volatility.
-6. Run a gate-shuffle ablation. If shuffling regimes in time doesn't hurt, the regime signal isn't doing the work.
-7. Check that your ablations aren't duplicates — two of ours returned bitwise-identical numbers.
-8. Relabel HMM states canonically before pooling across folds, or per-regime tables mix different regimes together.
-9. Report the seed distribution, not one run.
-10. Test significance with HAC-corrected Diebold–Mariano and correct for multiple comparisons.
+6. Run a gate-shuffle ablation, and weigh what correct timing buys against what the mechanism costs. Interpret it across many series — one asset can't separate "no signal" from "signal too small to pay for itself".
+7. Check the regime variable isn't redundant with a feature you already have. Regress the inferred state on your existing volatility features.
+8. Test the signal without the mechanism — feed the posteriors in as plain features before concluding that gating is what fails.
+9. Check that your ablations aren't duplicates — two of ours returned bitwise-identical numbers.
+10. Relabel HMM states canonically before pooling across folds, or per-regime tables mix different regimes together.
+11. Report the seed distribution, not one run.
+12. Test significance with HAC-corrected Diebold–Mariano and correct for multiple comparisons.
+13. Report what your null *excludes*, not just that you failed to reject.
 
 ---
 

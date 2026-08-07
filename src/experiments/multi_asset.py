@@ -35,13 +35,14 @@ import numpy as np  # noqa: E402
 from src.config import load_config  # noqa: E402
 from src.data.features import build_feature_table  # noqa: E402
 from src.data.make_dataset import load_or_download_equity_data  # noqa: E402
-from src.eval.dm_test import diebold_mariano  # noqa: E402
+from src.eval.dm_test import diebold_mariano, equivalence_bound  # noqa: E402
 from src.eval.oos import (  # noqa: E402
     ABLATION_BY_NAME,
     EvalSpec,
     HMMCache,
     collect_oos_baseline,
     collect_oos_regime_nested,
+    collect_oos_regime_variant,
     compute_metrics,
 )
 from src.models.baselines import (  # noqa: E402
@@ -151,6 +152,18 @@ def run_asset(ticker: str) -> List[dict]:
                 rows.append({"ticker": ticker, "horizon": h, "model": f"regime_{arm}",
                              "error": f"{type(e).__name__}: {e}"})
 
+        # The two ways of using the regime signal that avoid gating entirely.
+        for variant in ("features", "shrunk"):
+            try:
+                preds[f"regime_{variant}"] = collect_oos_regime_variant(
+                    df=data, features=features, target=target, ev=ev,
+                    K_values=[int(k) for k in cfg.hmm.K_values],
+                    variant=variant, cache=cache, seed=cfg.project.seed,
+                )
+            except Exception as e:
+                rows.append({"ticker": ticker, "horizon": h, "model": f"regime_{variant}",
+                             "error": f"{type(e).__name__}: {e}"})
+
         if "regime_single" not in preds or "regime_normal" not in preds:
             continue
 
@@ -174,16 +187,20 @@ def run_asset(ticker: str) -> List[dict]:
             # improvement over the pooled-ridge control; positive => better
             row["improvement_pct"] = 100.0 * (ref_rmse - m["rmse"]) / ref_rmse
 
-            if name.startswith("regime_") and name != "regime_single":
+            if name != "regime_single":
                 common = res.y_true.index.intersection(ref.y_true.index)
-                dm = diebold_mariano(
-                    res.y_true.loc[common].to_numpy(),
-                    res.y_pred.loc[common].to_numpy(),
-                    ref.y_pred.loc[common].to_numpy(),
-                    horizon=h, loss="mse",
-                )
+                yt = res.y_true.loc[common].to_numpy()
+                pa = res.y_pred.loc[common].to_numpy()
+                pb = ref.y_pred.loc[common].to_numpy()
+                dm = diebold_mariano(yt, pa, pb, horizon=h, loss="mse")
                 row["dm_stat_vs_pooled"] = dm.stat
                 row["dm_p_vs_pooled"] = dm.p_value
+                # how large an improvement the data can actually exclude
+                eb = equivalence_bound(yt, pa, pb, horizon=h)
+                row["ci_lower_pct"] = eb.lower
+                row["ci_upper_pct"] = eb.upper
+            for k, v in (res.diagnostics or {}).items():
+                row[k] = v
             rows.append(row)
 
     return rows

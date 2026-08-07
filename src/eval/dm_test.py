@@ -132,6 +132,89 @@ def diebold_mariano(
     return DMResult(float(dm_star), p, dbar, n, lag, loss)
 
 
+@dataclass(frozen=True)
+class EquivalenceBound:
+    """A two-sided confidence interval on RMSE improvement, in percent."""
+
+    point: float  # observed improvement of a over b, %
+    lower: float  # most favourable value for b consistent with the data
+    upper: float  # most favourable value for a consistent with the data
+    n: int
+    conf: float
+
+    @property
+    def rules_out_improvement_above(self) -> float:
+        """Largest improvement of model a over b not excluded by the data."""
+        return self.upper
+
+
+def equivalence_bound(
+    y_true: np.ndarray,
+    pred_a: np.ndarray,
+    pred_b: np.ndarray,
+    horizon: int = 1,
+    conf: float = 0.95,
+) -> EquivalenceBound:
+    """Bound the RMSE improvement of model a over model b.
+
+    A failure to reject equal accuracy is not evidence of equal accuracy: it is
+    also what an underpowered test produces. This converts the Diebold-Mariano
+    machinery into the statement a null result actually needs, namely *how large
+    an improvement the data can exclude*.
+
+    The interval is built on the mean squared-error differential, using the same
+    HAC variance and Harvey-Leybourne-Newbold correction as
+    :func:`diebold_mariano`, then mapped monotonically onto the RMSE percentage
+    scale via
+
+        improvement(d) = 100 * (1 - sqrt(1 + d / MSE_b)),
+
+    where ``d`` is the mean loss differential. Because the map is monotone
+    decreasing in ``d``, the interval endpoints transform directly.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    pred_a = np.asarray(pred_a, dtype=float)
+    pred_b = np.asarray(pred_b, dtype=float)
+
+    la = (y_true - pred_a) ** 2
+    lb = (y_true - pred_b) ** 2
+    d = la - lb
+    ok = np.isfinite(d) & np.isfinite(lb)
+    d, lb_ok = d[ok], lb[ok]
+    n = len(d)
+
+    mse_b = float(np.mean(lb_ok)) if n else np.nan
+    if n < 10 or not np.isfinite(mse_b) or mse_b <= 0:
+        return EquivalenceBound(np.nan, np.nan, np.nan, n, conf)
+
+    dbar = float(d.mean())
+    lag = max(int(horizon) - 1, 0)
+    lrv = _newey_west_var(d, lag)
+    if lrv <= 0:
+        return EquivalenceBound(np.nan, np.nan, np.nan, n, conf)
+
+    h = max(int(horizon), 1)
+    adj = max((n + 1.0 - 2.0 * h + h * (h - 1.0) / n) / n, 1e-8)
+    se = np.sqrt(lrv / n) / np.sqrt(adj)  # inflate the SE by the HLN correction
+    crit = float(stats.t.ppf(0.5 + conf / 2.0, df=n - 1))
+
+    def to_pct(delta: float) -> float:
+        ratio = 1.0 + delta / mse_b
+        if ratio <= 0:
+            return float("inf")
+        return 100.0 * (1.0 - np.sqrt(ratio))
+
+    # improvement is decreasing in d, so the upper CI limit on d gives the lower
+    # limit on improvement and vice versa
+    return EquivalenceBound(
+        point=to_pct(dbar),
+        lower=to_pct(dbar + crit * se),
+        upper=to_pct(dbar - crit * se),
+        n=n,
+        conf=conf,
+    )
+
+
 def holm_bonferroni(p_values: dict[str, float], alpha: float = 0.05) -> dict[str, bool]:
     """Holm-Bonferroni step-down correction over a family of tests.
 
