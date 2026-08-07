@@ -704,6 +704,79 @@ conditioning on, and worst at finding the ones that would help---not because it
 is badly implemented, but because its objective and the forecasting objective are
 different.
 
+\subsection{Two fixes the diagnosis implies}
+\label{sec:fixes}
+
+The two failures identified above---an emission vector that manufactures
+persistence, and an objective that finds the wrong states---each suggest a
+remedy. We test both.
+
+\paragraph{Emissions without overlapping windows.}
+Replacing the emission vector with volatility-standardised returns
+$z_t = r_t / \hat\sigma_{t-1}$, where $\hat\sigma$ is a causal EWMA of past
+squared returns, removes the manufactured persistence exactly. Excess
+persistence on i.i.d.\ Gaussian returns falls from $+0.301$ to $-0.005$, and on
+i.i.d.\ Student-$t$ from $+0.297$ to $+0.002$. More usefully, the diagnostic now
+\emph{discriminates}: the GARCH world, which has no discrete states, falls to
+$+0.013$, while the two genuine regime worlds retain $+0.065$ and $+0.048$.
+Under any process whose only structure is time-varying scale, the standardised
+series is approximately i.i.d., so surviving persistence indicates structure the
+volatility level does not already explain.
+
+Applied to SPY, this returns $-0.001$. Real equity returns, once their own
+volatility level is divided out, exhibit \emph{less} regime persistence than a
+GARCH process containing no regimes at all. The apparent regime structure in
+Figure~\ref{fig:regimes} is the volatility level and nothing else. We consider
+this the single cleanest statement the paper can make, and it is a measurement
+rather than an inference.
+
+\paragraph{Estimating the states jointly with the forecast.}
+
+\input{tables/joint}
+
+If the problem is that Baum--Welch optimises the wrong objective, the fix is to
+make the emission the predictive density itself,
+$p(y_t \mid x_t, z_t{=}k) = \mathcal{N}(\beta_k' x_t, \sigma_k^2)$, and estimate
+$\beta$, $\sigma$ and the transition matrix jointly by EM. This is Hamilton's
+\cite{hamilton1989} Markov-switching regression; the estimator is not new. What
+is new is the controlled comparison against the two-stage pipeline, on data whose
+regimes we control, with both arms given the same protocol---embargoed splits,
+$K$ and the ridge penalty selected on the same inner validation block, and a
+horizon-aware causal filter for out-of-sample prediction.
+
+The results split three ways.
+
+Where regimes exist and are identifiable, joint estimation is a large
+improvement: on the level-switching world it gains $+2.62\%$ and $+3.91\%$ at
+$h=1,5$ against the two-stage pipeline's $+0.37\%$ and $+0.72\%$, roughly a
+sevenfold difference. The diagnosis is therefore correct as far as it goes: the
+objective mismatch is real, and removing it recovers substantially more of the
+available signal.
+
+But joint estimation does \emph{not} rescue the dynamics-switching world, which
+is the case we expected it to fix. It loses there at every horizon, and beats the
+two-stage pipeline in only 1 of 12 replications. We had predicted the opposite.
+The implication is stronger than the one we set out to demonstrate: states that
+share a volatility level and differ only in how volatility evolves appear not to
+be recoverable from a return series by \emph{either} estimator. That is a
+statement about the information content of returns rather than about the choice
+of objective, and it bounds what any regime detector operating on returns alone
+can deliver.
+
+Finally, where there are no regimes---the GARCH world and real data---joint
+estimation is markedly worse than the two-stage pipeline ($-4.80\%$ and
+$-8.10\%$ at $h=1$). With $K$ times the parameters and nothing to find, the
+additional flexibility only overfits. This is consistent with the emission
+diagnostic above: on SPY there is no residual regime structure for a better
+estimator to exploit, so a more powerful estimator simply does more damage.
+
+The practical recommendation follows directly. Run the standardised-emission
+diagnostic first. If it returns approximately zero, as it does for SPY, no
+regime machinery of any sophistication will help, and the correct move is to
+condition on volatility continuously and stop. If it returns something
+materially positive, prefer joint estimation to the two-stage pipeline---but
+expect it to find only regimes that differ in level.
+
 \subsection{Nonlinear experts}
 \label{sec:nonlinear}
 

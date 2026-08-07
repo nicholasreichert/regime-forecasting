@@ -130,6 +130,43 @@ a significant positive answer gets manufactured by four evaluation shortcuts.
 
     ![Simulation study](paper/figures/simulation.png)
 
+11. **Two fixes, tested.** The diagnosis implies two remedies, and we ran both.
+
+    **Fix A — emissions without overlapping windows.** Standardize returns by a
+    causal EWMA, `z_t = r_t / σ̂_{t-1}`. The manufactured persistence vanishes and
+    the diagnostic starts discriminating: GARCH (no regimes) drops to +0.013
+    while genuine regime worlds hold +0.048–0.065.
+
+    **Applied to SPY it returns −0.001** — less than a GARCH process containing
+    no regimes. Once its own volatility level is divided out, real equity data has
+    no residual regime structure at all. This is the cleanest single statement in
+    the paper, and it's a measurement rather than an inference.
+
+    **Fix B — estimate the states jointly with the forecast** (Markov-switching
+    regression, EM on the predictive likelihood, not the emission likelihood):
+
+    | World | Two-stage h=1/5 | Joint h=1/5 |
+    |---|---|---|
+    | MS (level) — regimes exist | +0.37% / +0.72% | **+2.62% / +3.91%** |
+    | MS (dynamics) — regimes exist | +0.13% / +0.14% | −1.66% / −0.98% |
+    | GARCH — no regimes | −0.98% / −3.52% | −4.80% / −7.38% |
+    | **SPY** | −1.13% / −4.58% | −8.10% / −11.41% |
+
+    Joint estimation is ~7× better where regimes exist *and are identifiable*, so
+    the objective-mismatch diagnosis is right. But it does **not** rescue the
+    dynamics-differing world — we predicted it would. That's a stronger result
+    than intended: states sharing a volatility level and differing only in
+    dynamics appear unrecoverable from returns by *either* estimator, which
+    bounds what any return-based regime detector can deliver.
+
+    Where there are no regimes it's markedly worse — more parameters, nothing to
+    find, so it overfits.
+
+    **Practical rule:** run the standardized-emission diagnostic first. Near zero
+    (as for SPY) means no regime machinery will help — condition on volatility
+    continuously and stop. Materially positive means prefer joint estimation, but
+    expect it to find only level-differing regimes.
+
 ![Regime shading](paper/figures/regime_shading.png)
 
 ---

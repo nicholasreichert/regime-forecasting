@@ -1,0 +1,19 @@
+\begin{table}[t]
+\caption{Two-stage versus jointly-estimated regimes. Both are RMSE improvement over the same pooled ridge, in percent, averaged over four replications for the synthetic worlds. Both arms use the identical protocol: embargoed walk-forward splits, $K$ and the ridge penalty selected on the inner validation block, and causal prediction. Joint estimation is much better where regimes exist and differ in level, no better where they differ only in dynamics, and markedly worse where there are no regimes to find.}
+\label{tab:joint}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{3}{c}{Two-stage} & \multicolumn{3}{c}{Joint} \\
+\cmidrule(lr){2-4}\cmidrule(lr){5-7}
+Data-generating process & $h{=}1$ & $h{=}5$ & $h{=}20$ & $h{=}1$ & $h{=}5$ & $h{=}20$ \\
+\midrule
+Markov switching (level) & +0.37 & +0.72 & -0.66 & +2.62 & +3.91 & -6.97 \\
+Markov switching (dynamics) & +0.13 & +0.14 & -0.70 & -1.66 & -0.98 & -4.54 \\
+GARCH(1,1)-$t$ \quad(no regimes) & -0.98 & -3.52 & -6.44 & -4.80 & -7.38 & -11.84 \\
+\midrule
+\textbf{SPY (real data)} & -1.13 & -4.58 & -3.56 & -8.10 & -11.41 & -2.72 \\
+\bottomrule
+\end{tabular}
+\end{table}

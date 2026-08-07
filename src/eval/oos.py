@@ -609,6 +609,101 @@ def collect_oos_regime_variant(
 
 
 # --------------------------------------------------------------------------
+# jointly-estimated states (Markov-switching regression)
+# --------------------------------------------------------------------------
+
+
+def collect_oos_markov_switching(
+    df: pd.DataFrame,
+    features: Sequence[str],
+    target: str,
+    ev: EvalSpec,
+    K_values: Sequence[int] = (2, 3),
+    # Grid extended to 1e4 because the inner split selects the top of a shorter
+    # grid: with K states each fitting one coefficient per feature, the useful
+    # penalties are much larger than a default of 1.0 would suggest.
+    alphas: Sequence[float] = (1.0, 10.0, 100.0, 1000.0, 10000.0),
+    seed: int = 0,
+    val_fraction: float = 0.25,
+    n_init: int = 2,
+    n_iter: int = 60,
+) -> OOSResult:
+    """Walk-forward OOS predictions from a Markov-switching regression.
+
+    Unlike every other arm in this study, the states here are estimated jointly
+    with the forecast rather than inferred first and conditioned on afterwards.
+
+    Both ``K`` and the ridge penalty are chosen on the same embargoed inner
+    validation block used everywhere else, and test-window prediction uses the
+    horizon-aware causal filter. Tuning the penalty is not optional: each state
+    fits one coefficient per feature on an effective sample of only
+    ``sum_t gamma_t(k)`` rows, so a fixed penalty handicaps this arm relative to
+    the GCV-tuned ridge inside the two-stage baseline -- which is exactly the
+    under-specified-comparison error this paper is about, and it would be
+    pointing the wrong way here.
+    """
+    from src.eval.walk_forward import inner_validation_split
+    from src.models.markov_switching import MarkovSwitchingRegression
+
+    y_true_parts: List[pd.Series] = []
+    y_pred_parts: List[pd.Series] = []
+    boundaries: List[pd.Timestamp] = []
+    chosen_K: List[int] = []
+    chosen_a: List[float] = []
+
+    for split_idx, split in enumerate(_splits(df, ev)):
+        train = df.loc[split.train_idx]
+        test = df.loc[split.test_idx]
+
+        inner_tr_idx, inner_val_idx = inner_validation_split(
+            split.train_idx, val_fraction=val_fraction, embargo=ev.embargo
+        )
+        itr, iva = df.loc[inner_tr_idx], df.loc[inner_val_idx]
+        yva = iva[target].to_numpy()
+
+        best, best_score = None, np.inf
+        for K in K_values:
+            for a in alphas:
+                try:
+                    m = MarkovSwitchingRegression(
+                        K=int(K), alpha=float(a), seed=seed, n_init=n_init, n_iter=n_iter
+                    ).fit(itr[list(features)], itr[target])
+                    pv = m.predict(iva[list(features)], yva, horizon=ev.embargo or 1)
+                    s = rmse(yva, pv)
+                except Exception:
+                    continue
+                if np.isfinite(s) and s < best_score:
+                    best_score, best = s, (int(K), float(a))
+
+        if best is None:
+            best = (int(min(K_values)), 1.0)
+        K_star, a_star = best
+        chosen_K.append(K_star)
+        chosen_a.append(a_star)
+
+        model = MarkovSwitchingRegression(
+            K=K_star, alpha=a_star, seed=seed, n_init=n_init, n_iter=n_iter
+        ).fit(train[list(features)], train[target])
+        pred = model.predict(
+            test[list(features)], test[target].to_numpy(), horizon=ev.embargo or 1
+        )
+
+        y_true_parts.append(test[target].astype(float))
+        y_pred_parts.append(pd.Series(np.asarray(pred, dtype=float), index=test.index))
+        boundaries.append(split.test_start)
+
+    return OOSResult(
+        y_true=pd.concat(y_true_parts).sort_index(),
+        y_pred=pd.concat(y_pred_parts).sort_index(),
+        fold_boundaries=boundaries,
+        diagnostics={
+            "sel_K_mode": float(max(set(chosen_K), key=chosen_K.count)) if chosen_K else np.nan,
+            "sel_alpha_median": float(np.median(chosen_a)) if chosen_a else np.nan,
+        },
+    )
+
+
+# --------------------------------------------------------------------------
 # metrics over pooled OOS predictions
 # --------------------------------------------------------------------------
 
