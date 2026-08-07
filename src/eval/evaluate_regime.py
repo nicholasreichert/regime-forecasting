@@ -1,3 +1,13 @@
+"""DEPRECATED. Superseded by :mod:`src.eval.oos`.
+
+Retained only because ``scripts/legacy/run_experiments.py`` imports it. Its
+ablation set (``normal``/``no_regime``/``uniform``/``shuffle``) is degenerate:
+because experts are assigned by ``argmax``, the ``uniform`` and ``no_regime``
+arms both collapse to a single pooled expert and return bitwise-identical
+results. See ``src.eval.oos.ABLATIONS`` for the factorized replacement, which
+perturbs the expert partition and the prediction-time gate independently.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,13 +17,13 @@ import numpy as np
 import pandas as pd
 
 from src.eval.metrics import (
+    directional_accuracy,
     mae,
     rmse,
-    directional_accuracy,
     spearman_corr,
     top_decile_hit_rate,
 )
-from src.eval.subsets import high_vol_mask, top_quantile_mask, apply_mask
+from src.eval.subsets import apply_mask, high_vol_mask, top_quantile_mask
 from src.eval.walk_forward import walk_forward_splits
 from src.models.regime_conditioned import RegimeConditionedRidge
 from src.regime.hmm import fit_hmm_and_infer_probs, hmm_interpretability

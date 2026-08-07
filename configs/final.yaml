@@ -1,38 +1,89 @@
+# Configuration snapshot for the results reported in the paper.
+#
+# The active pipeline reads config.yaml; this file records the settings used for
+# the published run so they can be diffed against future changes.
+
 experiment:
   asset: "SPY"
   frequency: "1d"
 
 data:
   processed_parquet: "data/processed/SPY_absret_h1-5-20_features.parquet"
-  date_col: null 
+  date_col: null
 
 targets:
-  targets: ["y_absret_h1", "y_absret_h5", "y_absret_h20"]
+  # Primary: realized volatility over [t+1, t+h].
+  primary: ["y_rv_h1", "y_rv_h5", "y_rv_h20"]
+  # Secondary: |r_{t+h}|, a point-in-time transform of a single future day.
+  # Retained only as stage P0 of the protocol ablation; these three series are
+  # the same process at different leads and share a marginal distribution.
+  secondary: ["y_absret_h1", "y_absret_h5", "y_absret_h20"]
 
 evaluation:
   train_years: 6
   test_years: 1
   step_years: 1
-  hv_fut_q: 0.9   # top decile of y_true over full OOS
+  # Purge the last h training rows: their targets extend into the test fold.
+  embargo: "horizon"
+  # Trailing block of each training window reserved for choosing K and the
+  # gating rule. Never uses test data.
+  val_fraction: 0.25
+  stress_q: 0.9
 
 regime:
-  K: 3
+  K_values: [2, 3, 4]
   hmm_covariance_type: "diag"
   hmm_n_iter: 400
-  hmm_tol: 1e-3
-  hmm_random_state: 0
+  hmm_tol: 1e-4
+  hmm_min_covar: 1e-3
+  hmm_random_state: 42
 
+  # Emission vector actually used by src/regime/hmm.py. Kept in sync here
+  # because the stability diagnostic previously fitted a different one.
   emission_features:
-    - "ret_1d"
-    - "ret_vol_20"
+    - "ret_1d"      # signed return
+    - "abs_ret"     # |return|
+    - "ret_vol_20"  # trailing realized volatility
+
+  # States are relabelled low -> high on this dimension after every fit so that
+  # regime identities are comparable across walk-forward folds.
+  canonical_ordering_feature: "ret_vol_20"
 
   stress_feature: "ret_vol_20"
 
 model:
-  type: "hmm_ridge_soft"
-  ridge_alpha: 1.0
+  # alpha: null => tuned by generalized cross-validation within each fit
+  ridge_alpha: null
+  standardize: true
+  min_points_per_regime: 200
+  modes: ["hard", "soft"]
+
+baselines:
+  - "zero"
+  - "train_mean"
+  - "rw_vol"
+  - "ewma"       # RiskMetrics, lambda = 0.94
+  - "har"        # Corsi (2009), components at 1/5/22 days
+  - "garch11"
+  - "ridge"
+
+ablations:
+  # (train gate, test gate) - see src/eval/oos.py
+  normal: ["true", "true"]
+  gate_shuffle: ["true", "shuffle"]
+  expert_shuffle: ["shuffle", "true"]
+  both_shuffle: ["shuffle", "shuffle"]
+  single: ["single", "single"]
+
+significance:
+  test: "diebold_mariano"
+  hac: "newey_west"
+  hac_lag: "h-1"
+  small_sample_correction: "harvey_leybourne_newbold"
+  multiple_comparisons: "holm_bonferroni"
+  alpha: 0.05
 
 selection:
-  choose_metric: "rmse_hv_fut"
-  restrict_to_probs_mode: "normal"
-  restrict_to_model_prefix: "hmm_ridge"
+  # Chosen on the inner validation block, not on test data.
+  choose_metric: "rmse"
+  scope: "nested_within_training_window"

@@ -1,0 +1,23 @@
+\begin{table}[t]
+\caption{Pooled out-of-sample performance on realized-volatility targets, 15 walk-forward folds, Feb 2011--Feb 2026, n=3771. Lower is better. Best per column in \textbf{bold}. Markers report a Holm-corrected Diebold--Mariano test of the regime model against that baseline at the 5\% level: $\ast$ the regime model is significantly better, $\dagger$ significantly worse. The regime model significantly beats only the trivial baselines, and significantly loses to the pooled ridge. QLIKE diverges for near-zero forecasts, which is why the zero and random-walk rows are orders of magnitude above the rest.}
+\label{tab:main}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$h=1$} & \multicolumn{2}{c}{$h=5$} & \multicolumn{2}{c}{$h=20$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Model & RMSE & QLIKE & RMSE & QLIKE & RMSE & QLIKE \\
+\midrule
+Zero & 0.010847$^{\ast}$ & 1.39e+04 & 0.010850$^{\ast}$ & 37.7831 & 0.010852$^{\ast}$ & 8.3736 \\
+Train mean & 0.008423$^{\ast}$ & 2.7844 & 0.007042$^{\ast}$ & 1.2120 & 0.006389$^{\ast}$ & 0.8798 \\
+Random walk (RV) & 0.009436$^{\ast}$ & 148.9 & 0.005395 & 1.0204 & 0.005706 & 0.6026 \\
+EWMA / RiskMetrics & 0.007263 & 1.8569 & 0.005234 & 0.5626 & 0.005061 & 0.5077 \\
+HAR & 0.007133 & 1.8414 & 0.004990 & 0.5362 & 0.004967 & 0.4663 \\
+GARCH(1,1) & 0.007052 & \textbf{1.7780} & 0.004884 & \textbf{0.5159} & 0.004913 & 0.4725 \\
+Ridge (pooled) & \textbf{0.006968}$^{\dagger}$ & 2.1185 & \textbf{0.004719} & 0.5585 & \textbf{0.004867}$^{\dagger}$ & \textbf{0.4642} \\
+\midrule
+Regime-conditioned (HMM) & 0.007225 & 4.7700 & 0.004925 & 0.5975 & 0.005035 & 0.4963 \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -14,6 +14,13 @@ artifacts/results/*.csv
 artifacts/results/latest_config.yaml
 artifacts/regimes
 
+# Study artifacts: keep the small summary tables that the paper is built from,
+# drop the per-model prediction series (~14 MB) which are regenerable by
+# `python -m src.experiments.run_study`.
+artifacts/study/*/predictions/
+artifacts/study/*/regimes/
+artifacts/study/fixedK3_h5/
+
 reports/figures/
 
 .DS_Store

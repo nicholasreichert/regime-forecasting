@@ -1,0 +1,19 @@
+\begin{table}[t]
+\caption{Ablation of the regime signal (realized-volatility targets). $\Delta$ is RMSE relative to the \textsc{single} pooled-ridge control, in percent; negative would mean the arm beats the control. Shuffling the gate in time does not degrade the model: at $h=1$ and $h=5$ it improves it. If knowing the current regime mattered, the \textsc{gate\_shuffle} row would have to be worse than \textsc{normal}, and it is not.}
+\label{tab:ablation}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrrr}
+\toprule
+& \multicolumn{2}{c}{$h=1$} & \multicolumn{2}{c}{$h=5$} & \multicolumn{2}{c}{$h=20$} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Arm & RMSE & $\Delta$\% & RMSE & $\Delta$\% & RMSE & $\Delta$\% \\
+\midrule
+\textsc{normal} (full model) & 0.007225 & +3.69 & 0.004925 & +4.37 & 0.005035 & +3.45 \\
+\textsc{gate\_shuffle} & 0.007106 & +1.98 & 0.004844 & +2.65 & 0.005090 & +4.58 \\
+\textsc{expert\_shuffle} & 0.007044 & +1.09 & 0.004785 & +1.39 & 0.004925 & +1.20 \\
+\textsc{both\_shuffle} & 0.007144 & +2.53 & 0.004765 & +0.97 & 0.004891 & +0.50 \\
+\textsc{single} (pooled ridge) & 0.006968 & +0.00 & 0.004719 & +0.00 & 0.004867 & +0.00 \\
+\bottomrule
+\end{tabular}
+\end{table}
