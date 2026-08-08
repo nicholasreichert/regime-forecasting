@@ -18,6 +18,33 @@ class HMMResult:
     test_probs: np.ndarray   # filtered, shape (n_test, K)
 
 
+def _innovation_observations(df: pd.DataFrame, lam: float = 0.94) -> pd.DataFrame:
+    """Emissions built from volatility-standardised returns.
+
+    The default emission vector contains a 20-day rolling volatility, whose
+    consecutive values share 19 of 20 observations. That autocorrelation is
+    passed straight through to the fitted transition matrix, so the HMM reports
+    persistent regimes even on i.i.d.\\ data. Standardising by a causal EWMA of
+    past squared returns removes it: under any process whose only structure is
+    time-varying scale -- i.i.d.\\ or GARCH alike -- the standardised series is
+    approximately i.i.d., so surviving persistence reflects structure the
+    volatility level does not already explain.
+
+    This makes the emission roughly orthogonal to trailing volatility, which is
+    also the quantity the forecaster already conditions on. Regimes found here
+    are therefore candidates for carrying *incremental* information.
+    """
+    r = df["ret_1d"].astype(float)
+    # EWMA of squared returns using strictly past data
+    ewma_var = r.pow(2).ewm(alpha=1.0 - lam, adjust=False).mean().shift(1)
+    s = np.sqrt(ewma_var).replace(0.0, np.nan)
+    z = r / s
+    obs = pd.DataFrame(index=df.index)
+    obs["z"] = z
+    obs["abs_z"] = z.abs()
+    return obs.replace([np.inf, -np.inf], np.nan).dropna()
+
+
 def _build_hmm_observations(df: pd.DataFrame, include_vol: bool = True) -> pd.DataFrame:
     """Low-dimensional emission vector.
 
@@ -147,6 +174,7 @@ def fit_hmm_and_infer_probs(
     min_covar: float = 1e-3,
     seed: int = 42,
     include_vol: bool = True,
+    emission_mode: str = "standard",
 ) -> HMMResult:
     """
     Fit HMM on train observations only.
@@ -154,11 +182,17 @@ def fit_hmm_and_infer_probs(
       - train (p(z_t | x_{1:t}) on train)
       - test  (p(z_t | x_{1:t}) on test, warm-started from last train belief)
 
-    ``include_vol`` drops the rolling-volatility emission; see
-    :func:`_build_hmm_observations`. Used only by the simulation study.
+    ``include_vol`` drops the rolling-volatility emission and
+    ``emission_mode="innovation"`` replaces the emission vector with
+    volatility-standardised returns; see :func:`_build_hmm_observations` and
+    :func:`_innovation_observations` for why either might be wanted.
     """
-    train_obs_df = _build_hmm_observations(train_df, include_vol=include_vol)
-    test_obs_df = _build_hmm_observations(test_df, include_vol=include_vol)
+    if emission_mode == "innovation":
+        train_obs_df = _innovation_observations(train_df)
+        test_obs_df = _innovation_observations(test_df)
+    else:
+        train_obs_df = _build_hmm_observations(train_df, include_vol=include_vol)
+        test_obs_df = _build_hmm_observations(test_df, include_vol=include_vol)
 
     train_obs = train_obs_df.to_numpy()
     test_obs = test_obs_df.to_numpy()
@@ -181,7 +215,8 @@ def fit_hmm_and_infer_probs(
 
     # Relabel states into a canonical low->high volatility order so that state
     # identities are comparable across walk-forward folds.
-    vol_dim = train_obs_df.columns.get_loc("vol") if "vol" in train_obs_df.columns else 1
+    vol_dim = train_obs_df.columns.get_loc("vol") if "vol" in train_obs_df.columns else (
+        train_obs_df.columns.get_loc("abs_z") if "abs_z" in train_obs_df.columns else 1)
     _apply_state_permutation(hmm, canonical_state_order(hmm, int(vol_dim)))
 
     # Build log emission probabilities from fitted params

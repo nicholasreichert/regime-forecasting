@@ -2,6 +2,7 @@
 \caption{Model Confidence Set \cite{hansen2011mcs} at the 90\% level, computed separately for each of the 60 asset-horizon pairs with a stationary block bootstrap at block length $h$. Entries are the percentage of pairs in which the model survives into the set of models that cannot be distinguished from the best. Regime-conditioned models are in bold. Unlike the pairwise tests, this accounts for the full set of competitors simultaneously.}
 \label{tab:mcs}
 \small
+\fitwidth{%
 \begin{tabular}{lrr}
 \toprule
 Model & MSE & QLIKE \\
@@ -17,5 +18,6 @@ Gradient boosting (pooled) & 18\% & 43\% \\
 \textbf{Regime gating, shrunk} & 60\% & 72\% \\
 \textbf{Regime gating, GBM experts} & 15\% & 35\% \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}

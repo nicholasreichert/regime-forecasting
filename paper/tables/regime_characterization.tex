@@ -2,6 +2,7 @@
 \caption{What the inferred regimes do capture ($K{=}3$, $h{=}5$, out-of-sample). ``Stress'' is the top decile of realized volatility over the forecast window, so the unconditional rate is 10\%. Lift is the ratio of the within-regime rate to that base rate. The high-volatility state occupies a sixth of the sample and contains nearly three-fifths of all stress events---the regimes are genuinely informative, just not incrementally so for the conditional mean.}
 \label{tab:regimes}
 \small
+\fitwidth{%
 \begin{tabular}{lrrrrr}
 \toprule
 Regime & \% of time & Mean RV$^{(20)}$ & P(stress) & Lift & \% of all stress \\
@@ -10,5 +11,6 @@ Low vol & 47.3 & 0.00623 & 0.021 & 0.21 & 9.8 \\
 Mid vol & 36.4 & 0.00884 & 0.087 & 0.87 & 31.5 \\
 High vol & 16.3 & 0.01707 & 0.360 & 3.60 & 58.7 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}

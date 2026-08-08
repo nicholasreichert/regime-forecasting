@@ -27,3 +27,13 @@ reports/figures/
 Thumbs.db
 uv.lock
 artifacts/study/multi_asset/predictions/
+
+# LaTeX build intermediates (main.pdf is kept — it is the deliverable)
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.synctex.gz

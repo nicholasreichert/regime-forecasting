@@ -3,6 +3,7 @@
 \label{tab:ablation}
 \small
 \setlength{\tabcolsep}{4pt}
+\fitwidth{%
 \begin{tabular}{lrrrrrr}
 \toprule
 & \multicolumn{2}{c}{$h=1$} & \multicolumn{2}{c}{$h=5$} & \multicolumn{2}{c}{$h=20$} \\
@@ -15,5 +16,6 @@ Arm & RMSE & $\Delta$\% & RMSE & $\Delta$\% & RMSE & $\Delta$\% \\
 \textsc{both\_shuffle} & 0.007144 & +2.53 & 0.004765 & +0.97 & 0.004891 & +0.50 \\
 \textsc{single} (pooled ridge) & 0.006968 & +0.00 & 0.004719 & +0.00 & 0.004867 & +0.00 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}

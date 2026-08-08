@@ -3,6 +3,7 @@
 \label{tab:economic}
 \small
 \setlength{\tabcolsep}{4pt}
+\fitwidth{%
 \begin{tabular}{lrrrrr}
 \toprule
 & \multicolumn{3}{c}{Vol-target error} & \multicolumn{2}{c}{VaR (5\%, $h{=}1$)} \\
@@ -20,5 +21,6 @@ Gradient boosting (pooled) & 0.0389 & 0.0116 & 0.0074 & 0.053 & 65\% \\
 \textbf{Regime gating, shrunk} & 0.0360 & 0.0099 & 0.0046 & 0.051 & 95\% \\
 \textbf{Regime gating, GBM experts} & 0.0392 & 0.0130 & 0.0085 & 0.053 & 65\% \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
