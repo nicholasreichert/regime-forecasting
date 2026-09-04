@@ -1,3 +1,14 @@
+### Currently AI generated while I work on actual preprint and README
+
+
+
+
+
+
+
+
+
+
 # What Do Hidden Markov Models Learn From Financial Returns?
 
 Do HMM-inferred market regimes actually improve volatility forecasting?
